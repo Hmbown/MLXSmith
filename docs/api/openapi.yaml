@@ -1,0 +1,1049 @@
+openapi: 3.1.0
+info:
+  title: MLXSmith API
+  description: |
+    MLXSmith API server for local LLM inference and RLM training.
+    
+    This API provides:
+    - OpenAI-compatible chat completions with streaming support
+    - Internal endpoints for RLM training (rollouts with logprobs)
+    - Adapter hot-reload for continuous training
+    - Model management (list cached models, pull from HF)
+    - HuggingFace token storage
+    
+    ## Authentication
+    
+    Public endpoints (`/health`, `/v1/chat/completions`) do not require authentication.
+    
+    Internal endpoints (`/internal/*`) require an API token via Bearer authentication:
+    ```
+    Authorization: Bearer YOUR_API_TOKEN
+    ```
+    
+    Set the token via environment variable:
+    ```bash
+    export MLXSMITH_API_TOKEN=your-secret-token
+    ```
+    
+    ## Streaming
+    
+    Chat completions support streaming via Server-Sent Events (SSE).
+    Set `stream: true` in the request to enable streaming.
+  version: 0.1.0
+  contact:
+    name: MLXSmith
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: http://localhost:8000
+    description: Alternative local port
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ============================================================================
+  # Health Check
+  # ============================================================================
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      description: Returns the health status of the API server
+      tags:
+        - Health
+      security: []  # Public endpoint
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                ok: true
+                version: "0.1.0"
+                model: "mlx-community/Llama-3.2-1B-Instruct-4bit"
+
+  # ============================================================================
+  # Chat Completions (OpenAI-compatible)
+  # ============================================================================
+  /v1/chat/completions:
+    post:
+      operationId: createChatCompletion
+      summary: Create chat completion
+      description: |
+        OpenAI-compatible chat completions endpoint. Supports both streaming
+        and non-streaming responses.
+        
+        For streaming, set `stream: true` and consume the SSE response.
+      tags:
+        - Chat
+      security: []  # Public endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            example:
+              model: "mlx-community/Llama-3.2-1B-Instruct-4bit"
+              messages:
+                - role: "user"
+                  content: "Hello, how are you?"
+              max_tokens: 256
+              temperature: 0.7
+              stream: false
+      responses:
+        '200':
+          description: Successful completion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ============================================================================
+  # Internal Rollout
+  # ============================================================================
+  /internal/rollout:
+    post:
+      operationId: createRollout
+      summary: Create internal rollout
+      description: |
+        Internal rollout endpoint for RLM training. Returns generated tokens
+        along with per-token log probabilities.
+        
+        This is used by the RLM training loop to generate rollouts for
+        reward computation and policy updates.
+      tags:
+        - Internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RolloutRequest'
+            example:
+              prompt: "What is the capital of France?"
+              max_tokens: 128
+              temperature: 0.7
+              include_tokens: true
+              include_logprobs: true
+              include_text: true
+      responses:
+        '200':
+          description: Successful rollout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RolloutResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ============================================================================
+  # Adapter Management
+  # ============================================================================
+  /internal/adapter/reload:
+    post:
+      operationId: reloadAdapter
+      summary: Hot-reload adapter weights
+      description: |
+        Reload adapter weights without restarting the server.
+        
+        Can optionally reload the base model first (if `reload_base: true`).
+        If no adapter path is provided, unloads the current adapter.
+      tags:
+        - Internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdapterReloadRequest'
+            examples:
+              load-adapter:
+                summary: Load a specific adapter
+                value:
+                  adapter_path: "./runs/rlm/adapter_step_10"
+                  reload_base: false
+              reload-base:
+                summary: Reload base model
+                value:
+                  adapter_path: null
+                  reload_base: true
+      responses:
+        '200':
+          description: Adapter reloaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdapterReloadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Adapter path not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ============================================================================
+  # RLM State and History
+  # ============================================================================
+  /internal/rlm/state:
+    get:
+      operationId: getRLMState
+      summary: Get RLM training state
+      description: Returns the current state of the RLM training loop
+      tags:
+        - RLM
+      responses:
+        '200':
+          description: Current RLM state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RLMState'
+              examples:
+                idle:
+                  summary: No training in progress
+                  value:
+                    status: "idle"
+                running:
+                  summary: Training in progress
+                  value:
+                    status: "running"
+                    iteration: 42
+                    total_iterations: 100
+                    metrics:
+                      loss: 0.5
+                      reward_mean: 0.8
+                    started_at: 1704067200
+                    updated_at: 1704067500
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /internal/rlm/history:
+    get:
+      operationId: getRLMHistory
+      summary: Get RLM training history
+      description: |
+        Returns historical training metrics from the RLM loop.
+        
+        Use `limit` and `offset` for pagination.
+      tags:
+        - RLM
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of entries to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          description: Number of entries to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: RLM training history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RLMHistoryEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ============================================================================
+  # Model Management
+  # ============================================================================
+  /internal/models/list:
+    get:
+      operationId: listModels
+      summary: List cached models
+      description: |
+        Returns a list of cached MLX models in the cache directory.
+        
+        Models are detected in both the `mlx/` and `hf/` subdirectories
+        of the cache directory.
+      tags:
+        - Models
+      responses:
+        '200':
+          description: List of cached models
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelsListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /internal/models/pull:
+    post:
+      operationId: pullModel
+      summary: Pull a model from HuggingFace
+      description: |
+        Pulls a model from HuggingFace Hub and optionally converts it to MLX format.
+        
+        This proxies the `mlxsmith pull` CLI command. For large models,
+        the operation may take several minutes. The response indicates
+        whether the pull was initiated successfully.
+      tags:
+        - Models
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPullRequest'
+            example:
+              model_id: "mlx-community/Llama-3.2-1B-Instruct-4bit"
+              convert: true
+              quantize: false
+      responses:
+        '200':
+          description: Model pull initiated or completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelPullResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ============================================================================
+  # HuggingFace Token Management
+  # ============================================================================
+  /internal/hf/token:
+    post:
+      operationId: storeHFToken
+      summary: Store HuggingFace token
+      description: |
+        Stores a HuggingFace API token securely.
+        
+        The token is validated before storage if `validate: true`.
+        Storage uses the system keyring if available, otherwise falls
+        back to file-based storage with restricted permissions.
+      tags:
+        - HF Token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HFTokenRequest'
+            example:
+              token: "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              persist: true
+              validate_token: true
+      responses:
+        '200':
+          description: Token stored successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HFTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: API token for internal endpoints (set via MLXSMITH_API_TOKEN env var)
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Invalid request"
+            code: "VALIDATION_ERROR"
+            details:
+              field: "messages"
+              message: "At least one message is required"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Unauthorized"
+            code: "AUTH_ERROR"
+            details:
+              message: "Invalid or missing API token"
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Internal server error"
+            code: "GENERATION_ERROR"
+            details:
+              message: "Failed to generate response"
+
+  schemas:
+    # ==========================================================================
+    # Common Schemas
+    # ==========================================================================
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          description: Additional error details
+
+    HealthResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Service health status
+        version:
+          type: string
+          description: API version
+        model:
+          type: string
+          description: Currently loaded model
+
+    # ==========================================================================
+    # Chat Completions
+    # ==========================================================================
+    ChatMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+          description: Role of the message sender
+        content:
+          type: string
+          description: Message content
+        name:
+          type: string
+          description: Optional name for the sender
+        tool_calls:
+          type: array
+          items:
+            type: object
+          description: Tool calls (if any)
+
+    ChatRequest:
+      type: object
+      required:
+        - messages
+      properties:
+        model:
+          type: string
+          description: Model identifier (uses default if not provided)
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          minItems: 1
+          description: List of chat messages
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 8192
+          default: 256
+          description: Maximum tokens to generate
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.7
+          description: Sampling temperature
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1.0
+          description: Nucleus sampling parameter
+        top_k:
+          type: integer
+          minimum: 1
+          description: Top-k sampling parameter
+        stream:
+          type: boolean
+          default: false
+          description: Enable streaming response via SSE
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Stop sequences
+        seed:
+          type: integer
+          description: Random seed for reproducibility
+        presence_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+          description: Presence penalty
+        frequency_penalty:
+          type: number
+          minimum: -2
+          maximum: 2
+          default: 0
+          description: Frequency penalty
+
+    UsageInfo:
+      type: object
+      required:
+        - prompt_tokens
+        - completion_tokens
+        - total_tokens
+      properties:
+        prompt_tokens:
+          type: integer
+          description: Number of tokens in the prompt
+        completion_tokens:
+          type: integer
+          description: Number of tokens in the completion
+        total_tokens:
+          type: integer
+          description: Total number of tokens
+
+    Choice:
+      type: object
+      required:
+        - index
+        - message
+      properties:
+        index:
+          type: integer
+          description: Index of the choice
+        message:
+          $ref: '#/components/schemas/ChatMessage'
+        finish_reason:
+          type: string
+          enum: [stop, length, tool_calls]
+          description: Reason for completion finish
+
+    ChatResponse:
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - model
+        - choices
+        - usage
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the completion
+        object:
+          type: string
+          enum: [chat.completion]
+          default: chat.completion
+        created:
+          type: integer
+          description: Unix timestamp of creation
+        model:
+          type: string
+          description: Model used for the completion
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Choice'
+        usage:
+          $ref: '#/components/schemas/UsageInfo'
+
+    DeltaMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+        content:
+          type: string
+          description: Incremental content
+
+    StreamChoice:
+      type: object
+      required:
+        - index
+        - delta
+      properties:
+        index:
+          type: integer
+        delta:
+          $ref: '#/components/schemas/DeltaMessage'
+        finish_reason:
+          type: string
+          enum: [stop, length]
+
+    ChatCompletionChunk:
+      type: object
+      required:
+        - id
+        - object
+        - created
+        - model
+        - choices
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          enum: [chat.completion.chunk]
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            $ref: '#/components/schemas/StreamChoice'
+
+    # ==========================================================================
+    # Rollout
+    # ==========================================================================
+    RolloutRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: Input prompt text
+        max_tokens:
+          type: integer
+          minimum: 1
+          default: 256
+          description: Maximum tokens to generate
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 2
+          default: 0.7
+          description: Sampling temperature
+        top_p:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 1.0
+          description: Nucleus sampling parameter
+        top_k:
+          type: integer
+          minimum: 1
+          description: Top-k sampling
+        seed:
+          type: integer
+          description: Random seed
+        include_tokens:
+          type: boolean
+          default: true
+          description: Include token IDs in response
+        include_logprobs:
+          type: boolean
+          default: true
+          description: Include per-token logprobs
+        include_text:
+          type: boolean
+          default: true
+          description: Include generated text
+
+    RolloutResponse:
+      type: object
+      required:
+        - id
+        - created
+        - model
+        - prompt_len
+      properties:
+        id:
+          type: string
+          description: Unique rollout identifier
+        created:
+          type: integer
+          description: Unix timestamp
+        model:
+          type: string
+          description: Model used
+        prompt_len:
+          type: integer
+          description: Length of prompt in tokens
+        token_ids:
+          type: array
+          items:
+            type: integer
+          description: Generated token IDs
+        logprobs:
+          type: array
+          items:
+            type: number
+          description: Per-token log probabilities
+        completion:
+          type: string
+          description: Generated text
+
+    # ==========================================================================
+    # Adapter
+    # ==========================================================================
+    AdapterReloadRequest:
+      type: object
+      properties:
+        adapter_path:
+          type: string
+          nullable: true
+          description: Path to adapter directory (relative or absolute)
+        reload_base:
+          type: boolean
+          default: false
+          description: Reload the base model before applying adapter
+
+    AdapterReloadResponse:
+      type: object
+      required:
+        - ok
+        - base_model
+      properties:
+        ok:
+          type: boolean
+          description: Whether reload was successful
+        base_model:
+          type: string
+          description: Base model identifier
+        adapter_path:
+          type: string
+          nullable: true
+          description: Currently loaded adapter path
+        message:
+          type: string
+          description: Status message
+
+    # ==========================================================================
+    # RLM
+    # ==========================================================================
+    RLMTrainingMetrics:
+      type: object
+      properties:
+        loss:
+          type: number
+          description: Training loss
+        reward_mean:
+          type: number
+          description: Mean reward
+        reward_std:
+          type: number
+          description: Reward standard deviation
+        kl_div:
+          type: number
+          description: KL divergence from reference
+        learning_rate:
+          type: number
+          description: Current learning rate
+
+    RLMState:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [idle, running, paused, completed, error]
+          description: Current training status
+        iteration:
+          type: integer
+          description: Current training iteration
+        total_iterations:
+          type: integer
+          description: Total planned iterations
+        metrics:
+          $ref: '#/components/schemas/RLMTrainingMetrics'
+        started_at:
+          type: integer
+          description: Training start timestamp
+        updated_at:
+          type: integer
+          description: Last update timestamp
+        error_message:
+          type: string
+          description: Error message if status is error
+
+    RLMHistoryEntry:
+      type: object
+      required:
+        - iteration
+        - timestamp
+      properties:
+        iteration:
+          type: integer
+          description: Training iteration number
+        timestamp:
+          type: integer
+          description: Unix timestamp
+        adapter_score:
+          type: number
+          description: Adapter evaluation score
+        base_score:
+          type: number
+          description: Base model score
+        improvement:
+          type: number
+          description: Relative improvement
+        metrics:
+          type: object
+          description: Additional metrics
+
+    # ==========================================================================
+    # Models
+    # ==========================================================================
+    ModelInfo:
+      type: object
+      required:
+        - id
+        - path
+        - format
+        - has_adapter
+      properties:
+        id:
+          type: string
+          description: Model identifier
+        path:
+          type: string
+          description: Local path to the model
+        size_bytes:
+          type: integer
+          description: Model size in bytes
+        format:
+          type: string
+          enum: [mlx, hf, gguf]
+          description: Model format
+        has_adapter:
+          type: boolean
+          description: Whether model has adapter weights
+        adapter_path:
+          type: string
+          nullable: true
+          description: Path to adapter if present
+        metadata:
+          type: object
+          description: Additional model metadata
+        downloaded_at:
+          type: integer
+          description: Download timestamp
+
+    ModelsListResponse:
+      type: object
+      required:
+        - models
+        - total
+        - cache_dir
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelInfo'
+        total:
+          type: integer
+          description: Total number of models
+        cache_dir:
+          type: string
+          description: Current cache directory
+
+    ModelPullRequest:
+      type: object
+      required:
+        - model_id
+      properties:
+        model_id:
+          type: string
+          minLength: 1
+          description: HuggingFace model identifier
+        convert:
+          type: boolean
+          default: true
+          description: Convert to MLX format
+        quantize:
+          type: boolean
+          default: false
+          description: Quantize during conversion
+        q_bits:
+          type: integer
+          minimum: 1
+          maximum: 8
+          default: 4
+          description: Quantization bits
+        q_group_size:
+          type: integer
+          default: 64
+          description: Quantization group size
+        trust_remote_code:
+          type: boolean
+          default: false
+          description: Trust remote code in model
+
+    ModelPullStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [pending, downloading, converting, completed, error]
+          description: Current pull status
+        progress:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Progress percentage
+        message:
+          type: string
+          description: Status message
+        downloaded_bytes:
+          type: integer
+          description: Bytes downloaded so far
+        total_bytes:
+          type: integer
+          description: Total bytes to download
+
+    ModelPullResponse:
+      type: object
+      required:
+        - ok
+        - model_id
+        - status
+      properties:
+        ok:
+          type: boolean
+          description: Whether pull was initiated successfully
+        model_id:
+          type: string
+          description: Model identifier
+        local_path:
+          type: string
+          nullable: true
+          description: Local path where model will be stored
+        status:
+          $ref: '#/components/schemas/ModelPullStatus'
+        message:
+          type: string
+          description: Status message
+
+    # ==========================================================================
+    # HF Token
+    # ==========================================================================
+    HFTokenRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          minLength: 1
+          format: password
+          description: HuggingFace API token
+        persist:
+          type: boolean
+          default: true
+          description: Persist token to disk
+        validate_token:
+          type: boolean
+          default: true
+          description: Validate token before storing
+
+    HFTokenResponse:
+      type: object
+      required:
+        - ok
+        - validated
+        - message
+        - storage_method
+      properties:
+        ok:
+          type: boolean
+          description: Whether token was stored successfully
+        validated:
+          type: boolean
+          description: Whether token was validated
+        username:
+          type: string
+          nullable: true
+          description: HF username if validated
+        message:
+          type: string
+          description: Status message
+        storage_method:
+          type: string
+          enum: [keyring, file, memory]
+          description: How the token is stored
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Chat
+    description: OpenAI-compatible chat completions
+  - name: Internal
+    description: Internal endpoints for RLM training
+  - name: RLM
+    description: RLM training state and history
+  - name: Models
+    description: Model management
+  - name: HF Token
+    description: HuggingFace token storage

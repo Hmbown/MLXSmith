@@ -1,0 +1,81 @@
+# Environments
+
+mlxsmith environments package tasks, verifiers, and metadata into a reusable unit.
+They live under `envs/` and can be packaged/published to a local registry.
+
+Legacy single-file envs (e.g., `envs/coding.yaml`) still work with `mlxsmith rft`.
+
+## Layout
+
+```
+envs/
+  <name>/
+    env.yaml
+    ... optional assets ...
+```
+
+`env.yaml` is the manifest:
+
+```yaml
+name: coding-sample
+version: 0.1.0
+description: Sample environment
+verifier: verifiers/regex.py
+tasks:
+  - id: add
+    prompt: |
+      Write a Python function add(a, b) that returns the sum.
+    tests: |
+      from main import add
+      def test_add():
+          assert add(2, 3) == 5
+```
+
+## CLI workflow
+
+Initialize an environment:
+
+```
+mlxsmith env init myenv
+```
+
+Install from a directory or package:
+
+```
+mlxsmith env install path/to/envs/myenv
+mlxsmith env install path/to/myenv-0.1.0.tar.gz
+```
+
+Package and publish to the local registry:
+
+```
+mlxsmith env package myenv
+mlxsmith env publish envs/packages/myenv-0.1.0.tar.gz
+```
+
+Run a packaged env (invokes `mlxsmith rft` under the hood):
+
+```
+mlxsmith env run myenv --model runs/sft_0001/adapter
+```
+
+Inspect the registry index:
+
+```
+mlxsmith env registry
+```
+
+## Local registry
+
+The local registry index is stored at:
+
+```
+envs/registry.json
+```
+
+Published packages are copied into `envs/registry/` and indexed by name/version.
+
+## Notes
+
+- Environments are local-first; publishing only updates the local registry index.
+- For stronger isolation during verifier execution, use the Docker verifier backend.

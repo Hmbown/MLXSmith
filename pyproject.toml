@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlxsmith"
+version = "0.1.0"
+description = "PrimeRL-style training CLI for MLX (SFT/Pref/RFT/Eval/Serve) with pluggable acceleration backends (e.g., ZMLX)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name="Shannon Labs", email="devnull@example.com"}]
+dependencies = [
+  "typer>=0.9.0",
+  "rich>=13.7.0",
+  "pyyaml>=6.0.1",
+  "pydantic>=2.5.0",
+  "pydantic-settings>=2.2.1",
+  "tomli>=2.0.1; python_version < '3.11'",
+  "huggingface_hub>=1.3.4",
+  "jsonschema>=4.21.0",
+]
+
+[project.optional-dependencies]
+mlx = ["mlx>=0.30.4"]
+llm = [
+  "mlx-lm>=0.30.5",
+  "transformers>=5.0.0",
+  "datasets>=3.0.0",
+]
+serve = [
+  "fastapi>=0.128.0",
+  "uvicorn>=0.40.0",
+  "httpx>=0.28.0",
+]
+zmlx = ["zmlx"]
+dev = ["pytest>=9.0.0", "ruff>=0.14.0"]
+
+[project.scripts]
+mlxsmith = "mlxsmith.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
