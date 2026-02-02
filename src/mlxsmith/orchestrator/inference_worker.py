@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse
 from ..config import ProjectConfig
 from ..llm.registry import get_llm_backend
 from ..models import resolve_model_spec
+from ..rlm.recursive import recursive_compact, RecursiveStats
 from ..rlm.weights import WeightPointerStore
 from .queue import MessageQueue, MessageType, Message
 
@@ -135,6 +136,32 @@ class InferenceWorker:
                 success = self._apply_adapter(pointer.adapter_path)
                 if success:
                     print(f"[InferenceWorker] Hot-reloaded adapter: {pointer.adapter_path}")
+
+    def _maybe_compact_prompt(
+        self,
+        prompt: str,
+        payload: Dict[str, Any],
+    ) -> tuple[str, Optional[RecursiveStats]]:
+        if not payload.get("recursive"):
+            return prompt, None
+        if not self._llm:
+            return prompt, None
+        try:
+            return recursive_compact(
+                self._llm,
+                prompt,
+                max_seq_len=int(self.config.max_seq_len),
+                chunk_tokens=int(payload.get("recursive_chunk_tokens", 1024)),
+                overlap_tokens=int(payload.get("recursive_overlap_tokens", 128)),
+                keep_last_tokens=int(payload.get("recursive_keep_last_tokens", 384)),
+                summary_tokens=int(payload.get("recursive_summary_tokens", 256)),
+                max_depth=int(payload.get("recursive_max_depth", 3)),
+                temperature=float(payload.get("recursive_temperature", 0.2)),
+                seed=payload.get("seed"),
+                summary_prompt=payload.get("recursive_summary_prompt"),
+            )
+        except Exception:
+            return prompt, None
     
     def _handle_queue_message(self, msg: Message) -> Optional[Message]:
         """Handle a message from the queue."""
@@ -162,10 +189,12 @@ class InferenceWorker:
         # Check for weight updates before generating
         self._check_weight_updates()
         
+        prompt_used, recursion_stats = self._maybe_compact_prompt(prompt, payload)
+
         # Generate rollout
         try:
             gen = self._llm.generate_with_logprobs(
-                prompt,
+                prompt_used,
                 max_new_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
@@ -175,7 +204,7 @@ class InferenceWorker:
         except TypeError:
             try:
                 gen = self._llm.generate_with_logprobs(
-                    prompt,
+                    prompt_used,
                     max_new_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
@@ -184,7 +213,7 @@ class InferenceWorker:
                 )
             except TypeError:
                 gen = self._llm.generate_with_logprobs(
-                    prompt,
+                    prompt_used,
                     max_new_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
@@ -192,7 +221,7 @@ class InferenceWorker:
                     seed=seed,
                 )
         
-        completion = gen.text[len(prompt):] if gen.text.startswith(prompt) else gen.text
+        completion = gen.text[len(prompt_used):] if gen.text.startswith(prompt_used) else gen.text
         
         return Message(
             msg_type=MessageType.ROLLOUT_RESPONSE,
@@ -203,6 +232,10 @@ class InferenceWorker:
                 "logprobs": list(gen.logprobs) if gen.logprobs else None,
                 "completion": completion,
                 "adapter_version": self._current_version,
+                "prompt_used": prompt_used if prompt_used != prompt else None,
+                "recursion_depth": getattr(recursion_stats, "depth", None) if recursion_stats else None,
+                "recursion_chunks": getattr(recursion_stats, "chunks", None) if recursion_stats else None,
+                "recursion_truncated": getattr(recursion_stats, "truncated", None) if recursion_stats else None,
             },
             source="inference",
         )
@@ -317,20 +350,24 @@ class InferenceWorker:
             seed = request.get("seed")
             include_tokens = request.get("include_tokens", True)
             include_logprobs = request.get("include_logprobs", True)
+            include_top_k_logprobs = request.get("include_top_k_logprobs")
             
             # Check for weight updates
             self._check_weight_updates()
-            
+
+            prompt_used, recursion_stats = self._maybe_compact_prompt(prompt, request)
+
             gen = self._llm.generate_with_logprobs(
-                prompt,
+                prompt_used,
                 max_new_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
                 top_k_sampling=top_k,
                 seed=seed,
+                logprobs=int(include_top_k_logprobs or 0),
             )
             
-            completion = gen.text[len(prompt):] if gen.text.startswith(prompt) else gen.text
+            completion = gen.text[len(prompt_used):] if gen.text.startswith(prompt_used) else gen.text
             
             return {
                 "id": f"rollout-{uuid.uuid4().hex[:12]}",
@@ -339,8 +376,13 @@ class InferenceWorker:
                 "prompt_len": gen.prompt_len,
                 "token_ids": list(gen.token_ids) if include_tokens else None,
                 "logprobs": list(gen.logprobs) if (include_logprobs and gen.logprobs) else None,
+                "top_k_logprobs": gen.top_k_logprobs if include_top_k_logprobs else None,
                 "completion": completion,
                 "adapter_version": self._current_version,
+                "prompt_used": prompt_used if prompt_used != prompt else None,
+                "recursion_depth": getattr(recursion_stats, "depth", None) if recursion_stats else None,
+                "recursion_chunks": getattr(recursion_stats, "chunks", None) if recursion_stats else None,
+                "recursion_truncated": getattr(recursion_stats, "truncated", None) if recursion_stats else None,
             }
         
         @app.post("/internal/adapter/reload")

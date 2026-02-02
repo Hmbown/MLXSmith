@@ -10,6 +10,7 @@ from ..util import ensure_dir, now_ts
 from ..verifiers.docker_verifier import verify as docker_verify
 from ..verifiers.pytest_verifier import verify as pytest_verify
 from .generate import GeneratedTask, generate_tasks, filter_tasks
+from .recursive import recursive_compact
 from .mutate import mutate_tasks
 
 
@@ -92,13 +93,29 @@ def collect_rollouts(
 
     for task in tasks:
         for k in range(int(cfg.rlm.rollouts_per_task)):
+            prompt_text = task.prompt
+            if bool(getattr(cfg.rlm, "recursive_inference", False)):
+                prompt_text, _stats = recursive_compact(
+                    llm,
+                    prompt_text,
+                    max_seq_len=int(cfg.model.max_seq_len),
+                    chunk_tokens=int(cfg.rlm.recursive_chunk_tokens),
+                    overlap_tokens=int(cfg.rlm.recursive_overlap_tokens),
+                    keep_last_tokens=int(cfg.rlm.recursive_keep_last_tokens),
+                    summary_tokens=int(cfg.rlm.recursive_summary_tokens),
+                    max_depth=int(cfg.rlm.recursive_max_depth),
+                    temperature=float(cfg.rlm.recursive_temperature),
+                    seed=int(time.time() * 1000) % (2**31 - 1),
+                    summary_prompt=cfg.rlm.recursive_summary_prompt,
+                )
+
             gen = llm.generate_with_logprobs(
-                task.prompt,
+                prompt_text,
                 max_new_tokens=int(cfg.rft.max_new_tokens),
                 temperature=float(cfg.rft.temperature),
                 seed=int(time.time() * 1000) % (2**31 - 1),
             )
-            completion = gen.text[len(task.prompt) :] if gen.text.startswith(task.prompt) else gen.text
+            completion = gen.text[len(prompt_text) :] if gen.text.startswith(prompt_text) else gen.text
             wdir = ensure_dir(artifacts_dir / task.id / f"rollout_{k:02d}")
             (wdir / "main.py").write_text(completion, encoding="utf-8")
             _write_task_tests(task, wdir)
@@ -124,7 +141,7 @@ def collect_rollouts(
             rollouts.append(
                 Rollout(
                     task_id=task.id,
-                    prompt=task.prompt,
+                    prompt=prompt_text,
                     completion=completion,
                     token_ids=list(gen.token_ids),
                     prompt_len=int(gen.prompt_len),

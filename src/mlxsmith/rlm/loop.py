@@ -37,6 +37,7 @@ from .gating import load_state, save_state, should_accept, update_state
 from .generate import GeneratedTask
 from .history import append_history
 from .inference import Rollout, build_tasks
+from .recursive import recursive_compact
 from .trainer import train_on_rollouts
 from .weights import (
     WeightPointer,
@@ -47,6 +48,23 @@ from .weights import (
 )
 
 console = Console()
+
+
+def _recursive_payload(cfg: ProjectConfig) -> Dict[str, object]:
+    if not bool(cfg.rlm.recursive_inference):
+        return {}
+    payload: Dict[str, object] = {
+        "recursive": True,
+        "recursive_max_depth": int(cfg.rlm.recursive_max_depth),
+        "recursive_chunk_tokens": int(cfg.rlm.recursive_chunk_tokens),
+        "recursive_overlap_tokens": int(cfg.rlm.recursive_overlap_tokens),
+        "recursive_keep_last_tokens": int(cfg.rlm.recursive_keep_last_tokens),
+        "recursive_summary_tokens": int(cfg.rlm.recursive_summary_tokens),
+        "recursive_temperature": float(cfg.rlm.recursive_temperature),
+    }
+    if cfg.rlm.recursive_summary_prompt:
+        payload["recursive_summary_prompt"] = cfg.rlm.recursive_summary_prompt
+    return payload
 
 
 def _run_task_verifier(cfg: ProjectConfig, task_prompt: str, completion: str, workdir: Path) -> tuple[bool, float, float]:
@@ -606,18 +624,20 @@ class RLMOrchestrator:
         
         for k in range(rollouts_per_task):
             try:
+                payload = {
+                    "prompt": task.prompt,
+                    "max_tokens": int(self.cfg.rft.max_new_tokens),
+                    "temperature": float(self.cfg.rft.temperature),
+                    "top_p": float(self.cfg.infer.top_p),
+                    "top_k": self.cfg.infer.top_k,
+                    "seed": int(time.time() * 1000) % (2**31 - 1),
+                    "include_tokens": True,
+                    "include_logprobs": True,
+                }
+                payload.update(_recursive_payload(self.cfg))
                 resp = requests.post(
                     f"http://localhost:{self.cfg.serve.port}/internal/rollout",
-                    json={
-                        "prompt": task.prompt,
-                        "max_tokens": int(self.cfg.rft.max_new_tokens),
-                        "temperature": float(self.cfg.rft.temperature),
-                        "top_p": float(self.cfg.infer.top_p),
-                        "top_k": self.cfg.infer.top_k,
-                        "seed": int(time.time() * 1000) % (2**31 - 1),
-                        "include_tokens": True,
-                        "include_logprobs": True,
-                    },
+                    json=payload,
                     timeout=120.0,
                 )
                 
@@ -627,6 +647,7 @@ class RLMOrchestrator:
                 
                 data = resp.json()
                 completion = data.get("completion", "")
+                prompt_used = data.get("prompt_used") or task.prompt
                 
                 # Run verifier
                 from ..util import ensure_dir
@@ -646,7 +667,7 @@ class RLMOrchestrator:
                 
                 rollouts.append(Rollout(
                     task_id=task.id,
-                    prompt=task.prompt,
+                    prompt=prompt_used,
                     completion=completion,
                     token_ids=data.get("token_ids", []),
                     prompt_len=data.get("prompt_len", 0),
@@ -682,17 +703,19 @@ class RLMOrchestrator:
 
         for k in range(rollouts_per_task):
             try:
+                payload = {
+                    "prompt": task.prompt,
+                    "max_tokens": int(self.cfg.rft.max_new_tokens),
+                    "temperature": float(self.cfg.rft.temperature),
+                    "top_p": float(self.cfg.infer.top_p),
+                    "top_k": self.cfg.infer.top_k,
+                    "seed": int(time.time() * 1000) % (2**31 - 1),
+                }
+                payload.update(_recursive_payload(self.cfg))
                 req = self.queue.send(
                     "rollout_requests",
                     MessageType.ROLLOUT_REQUEST,
-                    {
-                        "prompt": task.prompt,
-                        "max_tokens": int(self.cfg.rft.max_new_tokens),
-                        "temperature": float(self.cfg.rft.temperature),
-                        "top_p": float(self.cfg.infer.top_p),
-                        "top_k": self.cfg.infer.top_k,
-                        "seed": int(time.time() * 1000) % (2**31 - 1),
-                    },
+                    payload,
                     source="orchestrator",
                 )
 
@@ -715,6 +738,7 @@ class RLMOrchestrator:
 
                 data = response.payload
                 completion = data.get("completion", "")
+                prompt_used = data.get("prompt_used") or task.prompt
 
                 # Run verifier
                 wdir = ensure_dir(self.project_root / "runs" / ".temp" / task.id / f"rollout_{k:02d}")
@@ -733,7 +757,7 @@ class RLMOrchestrator:
                 rollouts.append(
                     Rollout(
                         task_id=task.id,
-                        prompt=task.prompt,
+                        prompt=prompt_used,
                         completion=completion,
                         token_ids=data.get("token_ids", []),
                         prompt_len=data.get("prompt_len", 0),
@@ -1149,8 +1173,23 @@ def collect_rollouts_via_api(
         for task in tasks:
             for k in range(int(cfg.rlm.rollouts_per_task)):
                 try:
+                    prompt_text = task.prompt
+                    if bool(cfg.rlm.recursive_inference):
+                        prompt_text, _stats = recursive_compact(
+                            llm,
+                            prompt_text,
+                            max_seq_len=int(cfg.model.max_seq_len),
+                            chunk_tokens=int(cfg.rlm.recursive_chunk_tokens),
+                            overlap_tokens=int(cfg.rlm.recursive_overlap_tokens),
+                            keep_last_tokens=int(cfg.rlm.recursive_keep_last_tokens),
+                            summary_tokens=int(cfg.rlm.recursive_summary_tokens),
+                            max_depth=int(cfg.rlm.recursive_max_depth),
+                            temperature=float(cfg.rlm.recursive_temperature),
+                            seed=int(time.time() * 1000) % (2**31 - 1),
+                            summary_prompt=cfg.rlm.recursive_summary_prompt,
+                        )
                     gen = llm.generate_with_logprobs(
-                        task.prompt,
+                        prompt_text,
                         max_new_tokens=int(cfg.rft.max_new_tokens),
                         temperature=float(cfg.rft.temperature),
                         top_p=float(cfg.infer.top_p),
@@ -1159,14 +1198,14 @@ def collect_rollouts_via_api(
                     )
                 except TypeError:
                     gen = llm.generate_with_logprobs(
-                        task.prompt,
+                        prompt_text,
                         max_new_tokens=int(cfg.rft.max_new_tokens),
                         temperature=float(cfg.rft.temperature),
                         top_p=float(cfg.infer.top_p),
                         top_k_sampling=cfg.infer.top_k,
                         seed=int(time.time() * 1000) % (2**31 - 1),
                     )
-                completion = gen.text[len(task.prompt) :] if gen.text.startswith(task.prompt) else gen.text
+                completion = gen.text[len(prompt_text) :] if gen.text.startswith(prompt_text) else gen.text
                 wdir = ensure_dir(artifacts_dir / task.id / f"rollout_{k:02d}")
                 (wdir / "main.py").write_text(completion, encoding="utf-8")
                 (ensure_dir(wdir / "tests") / "test_task.py").write_text(task.tests, encoding="utf-8")
@@ -1174,7 +1213,7 @@ def collect_rollouts_via_api(
                 rollouts.append(
                     Rollout(
                         task_id=task.id,
-                        prompt=task.prompt,
+                        prompt=prompt_text,
                         completion=completion,
                         token_ids=list(gen.token_ids),
                         prompt_len=gen.prompt_len,
@@ -1200,18 +1239,20 @@ def collect_rollouts_via_api(
     for task in tasks:
         for k in range(int(cfg.rlm.rollouts_per_task)):
             try:
+                payload = {
+                    "prompt": task.prompt,
+                    "max_tokens": int(cfg.rft.max_new_tokens),
+                    "temperature": float(cfg.rft.temperature),
+                    "top_p": float(cfg.infer.top_p),
+                    "top_k": cfg.infer.top_k,
+                    "seed": int(time.time() * 1000) % (2**31 - 1),
+                    "include_tokens": True,
+                    "include_logprobs": True,
+                }
+                payload.update(_recursive_payload(cfg))
                 resp = requests.post(
                     f"{api_url}/internal/rollout",
-                    json={
-                        "prompt": task.prompt,
-                        "max_tokens": int(cfg.rft.max_new_tokens),
-                        "temperature": float(cfg.rft.temperature),
-                        "top_p": float(cfg.infer.top_p),
-                        "top_k": cfg.infer.top_k,
-                        "seed": int(time.time() * 1000) % (2**31 - 1),
-                        "include_tokens": True,
-                        "include_logprobs": True,
-                    },
+                    json=payload,
                     timeout=120.0,
                 )
                 
@@ -1220,6 +1261,7 @@ def collect_rollouts_via_api(
                 
                 data = resp.json()
                 completion = data.get("completion", "")
+                prompt_used = data.get("prompt_used") or task.prompt
                 
                 wdir = ensure_dir(artifacts_dir / task.id / f"rollout_{k:02d}")
                 (wdir / "main.py").write_text(completion, encoding="utf-8")
@@ -1229,7 +1271,7 @@ def collect_rollouts_via_api(
                 
                 rollouts.append(Rollout(
                     task_id=task.id,
-                    prompt=task.prompt,
+                    prompt=prompt_used,
                     completion=completion,
                     token_ids=data.get("token_ids", []),
                     prompt_len=data.get("prompt_len", 0),

@@ -176,6 +176,9 @@ class RolloutRequest(BaseModel):
         le=20,
     )
     include_text: bool = Field(True, description="Include generated text")
+    recursive: Optional[bool] = Field(
+        None, description="Override recursive inference for this rollout"
+    )
 
 
 class RolloutResponse(BaseModel):
@@ -197,6 +200,10 @@ class RolloutResponse(BaseModel):
         None, description="Top-k logprobs per prompt token"
     )
     completion: Optional[str] = Field(None, description="Generated text (if requested)")
+    prompt_used: Optional[str] = Field(None, description="Prompt actually used for generation")
+    recursion_depth: Optional[int] = Field(None, description="Recursive compaction depth")
+    recursion_chunks: Optional[int] = Field(None, description="Number of chunks summarized")
+    recursion_truncated: Optional[bool] = Field(None, description="Whether recursion truncated")
 
 
 # =============================================================================

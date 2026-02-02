@@ -249,6 +249,36 @@ class RlmConfig(BaseModel):
             r"\bbrew\s+install\b",
         ]
     )
+
+    # Recursive inference (long-context compression)
+    recursive_inference: bool = False
+    recursive_max_depth: int = 3
+    recursive_chunk_tokens: int = 1024
+    recursive_overlap_tokens: int = 128
+    recursive_keep_last_tokens: int = 384
+    recursive_summary_tokens: int = 256
+    recursive_temperature: float = 0.2
+    recursive_summary_prompt: Optional[str] = None
+
+    @field_validator(
+        "recursive_max_depth",
+        "recursive_chunk_tokens",
+        "recursive_overlap_tokens",
+        "recursive_keep_last_tokens",
+        "recursive_summary_tokens",
+    )
+    @classmethod
+    def validate_non_negative_int(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("value must be non-negative")
+        return v
+
+    @field_validator("recursive_temperature")
+    @classmethod
+    def validate_non_negative_float(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("value must be non-negative")
+        return v
     
     @field_validator("mix_old_ratio", "hard_ratio", "gating_ema_alpha", "similarity_threshold")
     @classmethod

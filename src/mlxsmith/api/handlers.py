@@ -63,6 +63,7 @@ from .schemas import (
     StreamChoice,
     UsageInfo,
 )
+from ..rlm.recursive import recursive_compact
 
 # =============================================================================
 # Authentication Middleware
@@ -261,7 +262,7 @@ def create_router(
         """Health check endpoint."""
         return HealthResponse(
             ok=True,
-            version="0.1.5",
+            version="0.1.6",
             model=base_model,
         )
     
@@ -474,8 +475,29 @@ def create_router(
             # Determine logprobs to return
             logprobs_k = request.include_top_k_logprobs or (5 if request.include_logprobs else 0)
             
+            prompt_text = request.prompt
+            use_recursive = bool(getattr(cfg.rlm, "recursive_inference", False))
+            if request.recursive is not None:
+                use_recursive = bool(request.recursive)
+
+            recursion_stats = None
+            if use_recursive:
+                prompt_text, recursion_stats = recursive_compact(
+                    llm_backend,
+                    prompt_text,
+                    max_seq_len=int(cfg.model.max_seq_len),
+                    chunk_tokens=int(cfg.rlm.recursive_chunk_tokens),
+                    overlap_tokens=int(cfg.rlm.recursive_overlap_tokens),
+                    keep_last_tokens=int(cfg.rlm.recursive_keep_last_tokens),
+                    summary_tokens=int(cfg.rlm.recursive_summary_tokens),
+                    max_depth=int(cfg.rlm.recursive_max_depth),
+                    temperature=float(cfg.rlm.recursive_temperature),
+                    seed=request.seed,
+                    summary_prompt=cfg.rlm.recursive_summary_prompt,
+                )
+
             gen = llm_backend.generate_with_logprobs(
-                request.prompt,
+                prompt_text,
                 max_new_tokens=request.max_tokens,
                 temperature=request.temperature,
                 top_p=request.top_p,
@@ -484,7 +506,7 @@ def create_router(
                 logprobs=logprobs_k,
             )
             
-            completion = gen.text[len(request.prompt):] if gen.text.startswith(request.prompt) else gen.text
+            completion = gen.text[len(prompt_text):] if gen.text.startswith(prompt_text) else gen.text
 
             prompt_logprobs: Optional[List[float]] = None
             prompt_top_k: Optional[List[Dict[str, float]]] = None
@@ -517,6 +539,10 @@ def create_router(
                 prompt_logprobs=prompt_logprobs,
                 prompt_top_k_logprobs=prompt_top_k,
                 completion=completion if request.include_text else None,
+                prompt_used=prompt_text if prompt_text != request.prompt else None,
+                recursion_depth=getattr(recursion_stats, "depth", None) if recursion_stats else None,
+                recursion_chunks=getattr(recursion_stats, "chunks", None) if recursion_stats else None,
+                recursion_truncated=getattr(recursion_stats, "truncated", None) if recursion_stats else None,
             )
         except Exception as e:
             raise HTTPException(
