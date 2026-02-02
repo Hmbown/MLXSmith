@@ -33,4 +33,4 @@ Date: 2026-02-02
 - Add first-class support for speculative decoding.
 - See `docs/ROADMAP.md` for the broader product roadmap.
 - See `docs/WORKPLAN.md` for parity + app execution details.
-- See `docs/prime-intellect-design-notes.md` for design alignment notes.
+- See `docs/orchestrator.md` for multi-process orchestrator design.

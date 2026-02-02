@@ -27,7 +27,12 @@ models/
 runs/
 docs/ROADMAP_LOCAL.md
 docs/prompt-cli-full-qa.md
+docs/prompt-cli-qa.md
+docs/prompt-hf-oauth-qa.md
+docs/prime-intellect-design-notes.md
 analysis_prompt.md
+prime-intellect-design-notes.md
+swiftuithoughts.md
 
 # Local run configs (contain machine-specific paths)
 mlxsmith.yaml
