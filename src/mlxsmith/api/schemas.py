@@ -6,7 +6,7 @@ OpenAPI 3.1 compatible schemas for MLXSmith API.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # =============================================================================
@@ -375,14 +375,15 @@ class ModelPullRequest(BaseModel):
     q_group_size: Optional[int] = Field(64, description="Quantization group size")
     trust_remote_code: bool = Field(False, description="Trust remote code in model")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_id": "mlx-community/Llama-3.2-1B-Instruct-4bit",
                 "convert": True,
                 "quantize": False,
             }
         }
+    )
 
 
 class ModelPullStatus(BaseModel):

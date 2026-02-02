@@ -72,3 +72,9 @@ license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+filterwarnings = [
+  "ignore:Failed to load config file:UserWarning:mlxsmith.config",
+]

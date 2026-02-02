@@ -91,6 +91,7 @@ class ProjectSettings(BaseSettings):
         env_prefix="MLXSMITH__",
         env_nested_delimiter="__",
         env_parse_enums=True,
+        env_ignore_empty=True,
         extra="ignore",  # Ignore unknown env vars
     )
 
