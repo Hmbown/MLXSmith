@@ -51,6 +51,25 @@ def _coerce_logprob(mx: Any, value: Any) -> Any:
     return value
 
 
+def _response_len(token_ids: Sequence[int], prompt_len: int) -> int:
+    return max(1, int(len(token_ids) - prompt_len))
+
+
+def _mean_token_logprob(backend, token_ids: Sequence[int], *, prompt_len: int) -> Any:
+    mx = _require_mx(backend)
+    token_logps, _ = backend.token_logprobs(
+        token_ids,
+        prompt_len=prompt_len,
+        top_k=0,
+        include_prompt=False,
+    )
+    if token_logps:
+        return _to_mx_scalar(mx, sum(token_logps) / float(len(token_logps)))
+    # Fallback to length-normalized sequence logprob
+    logp = backend.sequence_logprob(token_ids, prompt_len=prompt_len)
+    return logp / _to_mx_scalar(mx, float(_response_len(token_ids, prompt_len)))
+
+
 def preference_diff(
     backend,
     chosen_ids: Sequence[int],
@@ -172,6 +191,95 @@ def dpo_loss(
     return loss
 
 
+@register_loss("simpo")
+def simpo_loss(
+    backend,
+    chosen_ids: Sequence[int],
+    rejected_ids: Sequence[int],
+    *,
+    prompt_len_chosen: int,
+    prompt_len_rejected: int,
+    beta: float = 0.1,
+    margin: float = 0.0,
+) -> Any:
+    """SimPO loss (reference-free, length-normalized preference optimization)."""
+    mx = _require_mx(backend)
+    logp_c = backend.sequence_logprob(chosen_ids, prompt_len=prompt_len_chosen)
+    logp_r = backend.sequence_logprob(rejected_ids, prompt_len=prompt_len_rejected)
+    len_c = _to_mx_scalar(mx, float(_response_len(chosen_ids, prompt_len_chosen)))
+    len_r = _to_mx_scalar(mx, float(_response_len(rejected_ids, prompt_len_rejected)))
+    diff = (logp_c / len_c) - (logp_r / len_r) - _to_mx_scalar(mx, margin)
+    scaled = _to_mx_scalar(mx, beta) * diff
+    return mx.log1p(mx.exp(-scaled))
+
+
+@register_loss("tdpo")
+def tdpo_loss(
+    backend,
+    chosen_ids: Sequence[int],
+    rejected_ids: Sequence[int],
+    *,
+    prompt_len_chosen: int,
+    prompt_len_rejected: int,
+    beta: float = 0.1,
+    reference_backend: Optional[Any] = None,
+    kl_coeff: float = 0.0,
+) -> Any:
+    """Token-level DPO (uses mean token logprobs for preference diff)."""
+    mx = _require_mx(backend)
+    logp_c = _mean_token_logprob(backend, chosen_ids, prompt_len=prompt_len_chosen)
+    logp_r = _mean_token_logprob(backend, rejected_ids, prompt_len=prompt_len_rejected)
+    ref_diff = _to_mx_scalar(mx, 0.0)
+    if reference_backend is not None:
+        ref_logp_c = _mean_token_logprob(reference_backend, chosen_ids, prompt_len=prompt_len_chosen)
+        ref_logp_r = _mean_token_logprob(reference_backend, rejected_ids, prompt_len=prompt_len_rejected)
+        ref_diff = ref_logp_c - ref_logp_r
+    diff = (logp_c - logp_r) - ref_diff
+    scaled = _to_mx_scalar(mx, beta) * diff
+    loss = mx.log1p(mx.exp(-scaled))
+
+    if reference_backend is not None and kl_coeff > 0:
+        logp_c_full = backend.sequence_logprob(chosen_ids, prompt_len=prompt_len_chosen)
+        ref_logp_c_full = reference_backend.sequence_logprob(chosen_ids, prompt_len=prompt_len_chosen)
+        loss = loss + _to_mx_scalar(mx, kl_coeff) * (logp_c_full - ref_logp_c_full)
+
+    return loss
+
+
+@register_loss("kto")
+def kto_loss(
+    backend,
+    token_ids: Sequence[int],
+    *,
+    prompt_len: int,
+    desired: bool,
+    beta: float = 0.1,
+    gain_power: float = 1.0,
+    loss_power: float = 1.0,
+    loss_aversion: float = 1.0,
+    reference_point: float = 0.0,
+    reference_backend: Optional[Any] = None,
+) -> Any:
+    """Kahneman-Tversky Optimization loss for binary feedback."""
+    mx = _require_mx(backend)
+    logp = backend.sequence_logprob(token_ids, prompt_len=prompt_len)
+    ref_logp = _to_mx_scalar(mx, 0.0)
+    if reference_backend is not None:
+        ref_logp = reference_backend.sequence_logprob(token_ids, prompt_len=prompt_len)
+
+    z = logp - ref_logp - _to_mx_scalar(mx, reference_point)
+    pos = mx.maximum(z, _to_mx_scalar(mx, 0.0))
+    neg = mx.minimum(z, _to_mx_scalar(mx, 0.0))
+    value = (pos ** _to_mx_scalar(mx, gain_power)) - _to_mx_scalar(mx, loss_aversion) * (
+        (-neg) ** _to_mx_scalar(mx, loss_power)
+    )
+
+    scaled = _to_mx_scalar(mx, beta) * value
+    if desired:
+        return mx.log1p(mx.exp(-scaled))
+    return mx.log1p(mx.exp(scaled))
+
+
 @register_loss("orpo")
 def orpo_loss(
     backend,
@@ -262,6 +370,27 @@ def preference_loss(
             prompt_len_rejected=prompt_len_rejected,
             delta=delta,
             reference_backend=reference_backend,
+        )
+    if algo_l == "simpo":
+        return simpo_loss(
+            backend,
+            chosen_ids,
+            rejected_ids,
+            prompt_len_chosen=prompt_len_chosen,
+            prompt_len_rejected=prompt_len_rejected,
+            beta=beta,
+            margin=delta,
+        )
+    if algo_l == "tdpo":
+        return tdpo_loss(
+            backend,
+            chosen_ids,
+            rejected_ids,
+            prompt_len_chosen=prompt_len_chosen,
+            prompt_len_rejected=prompt_len_rejected,
+            beta=beta,
+            reference_backend=reference_backend,
+            kl_coeff=kl_coeff,
         )
     return dpo_loss(
         backend,

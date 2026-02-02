@@ -210,7 +210,7 @@ class ForwardBackwardRequest(BaseModel):
     rejected_responses: Optional[List[str]] = Field(
         None, description="List of rejected responses (for preference training)"
     )
-    loss_type: Literal["sft", "dpo", "orpo", "ppo", "custom"] = Field(
+    loss_type: Literal["sft", "dpo", "orpo", "cpo", "ipo", "hinge", "simpo", "tdpo", "ppo", "custom"] = Field(
         "sft", description="Type of loss to compute"
     )
     train_on_prompt: bool = Field(False, description="Compute loss on prompt tokens")

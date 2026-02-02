@@ -2,7 +2,7 @@
 
 Apple Silicon MLX fine-tuning toolkit — SFT, DPO/ORPO, GRPO, distillation, and OpenAI-compatible serving.
 
-**Status:** alpha (v0.1.2). Full training pipeline validated on Qwen3-4B.
+**Status:** alpha (v0.1.4). Full training pipeline validated on Qwen3-4B.
 
 ## Install
 
@@ -18,9 +18,6 @@ pip install mlxsmith
 
 # Apple Silicon training + serving
 pip install "mlxsmith[mlx,llm,serve]"
-
-# mlx-lm-lora passthrough (advanced training methods)
-pip install "mlxsmith[lora]"
 
 # Everything
 pip install "mlxsmith[all]"
@@ -53,6 +50,14 @@ mlxsmith pref --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 \
 
 Supports DPO and ORPO algorithms with configurable beta and KL coefficients. Expects `{prompt, chosen, rejected}` data format.
 
+### KTO (binary feedback)
+
+```bash
+mlxsmith kto --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 --data data/kto.jsonl
+```
+
+Expects JSONL rows with `{prompt, response, label}` (label can be boolean or 0/1).
+
 ### Reinforced fine-tuning (GRPO)
 
 ```bash
@@ -79,20 +84,18 @@ mlxsmith distill --teacher large-model --student small-model --mode opd
 mlxsmith pipeline
 ```
 
-### mlx-lm-lora parity (all methods)
-
-Use the passthrough to access mlx-lm-lora features (DPO variants, GRPO variants,
-PPO, synthetic datasets, judge training, etc.):
+### Synthetic data
 
 ```bash
-# Train with mlx-lm-lora directly
-mlxsmith lora train --model Qwen/Qwen3-4B-Instruct-2507 --data data/prefs --train-mode dpo -- --beta 0.1
+# Generate prompts
+mlxsmith synthetic prompts --model mlx-community/Qwen3-4B-Instruct-2507-4bit --num 1000
 
-# Generate synthetic datasets
-mlxsmith lora synthetic prompts -- --model mlx-community/Qwen3-4B-Instruct-2507-4bit --num-samples 1000
+# Evol-Instruct style prompt evolution
+mlxsmith synthetic evolve --model mlx-community/Qwen3-4B-Instruct-2507-4bit --seeds data/prompts.jsonl
 
-# Train judge model
-mlxsmith lora judge -- --model mlx-community/Qwen3-4B-Instruct-2507-4bit --data data/prefs
+# Rejection-sampled SFT
+mlxsmith synthetic sft --model mlx-community/Qwen3-4B-Instruct-2507-4bit --prompts data/prompts.jsonl \
+  --candidates 4 --judge-model mlx-community/Qwen3-4B-Instruct-2507-4bit
 ```
 
 ## Serving

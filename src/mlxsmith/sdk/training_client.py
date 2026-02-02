@@ -107,7 +107,7 @@ class TrainingBatch:
     @property
     def is_preference(self) -> bool:
         """Check if this is a preference batch."""
-        return self.loss_type in ("dpo", "orpo", "ipo", "preference")
+        return self.loss_type in ("dpo", "orpo", "ipo", "cpo", "hinge", "simpo", "tdpo", "preference")
     
     @property
     def is_rl(self) -> bool:

@@ -99,10 +99,21 @@ class PrefConfig(BaseModel):
     """Preference tuning configuration (DPO variants)."""
     
     algo: Literal["dpo", "orpo", "grpo"] = "dpo"
-    loss_type: Literal["dpo", "cpo", "orpo", "ipo", "hinge"] = "dpo"
+    loss_type: Literal["dpo", "cpo", "orpo", "ipo", "hinge", "simpo", "tdpo"] = "dpo"
     beta: float = 0.1
     kl_coeff: float = 0.0
     delta: float = 0.0
+    reference_model: Optional[str] = None
+
+
+class KtoConfig(BaseModel):
+    """Kahneman-Tversky Optimization configuration (binary feedback)."""
+
+    beta: float = 0.1
+    gain_power: float = 1.0
+    loss_power: float = 1.0
+    loss_aversion: float = 1.0
+    reference_point: float = 0.0
     reference_model: Optional[str] = None
 
 
@@ -255,6 +266,7 @@ class ProjectConfig(BaseModel):
     train: TrainConfig = Field(default_factory=TrainConfig)
     lora: LoraConfig = Field(default_factory=LoraConfig)
     pref: PrefConfig = Field(default_factory=PrefConfig)
+    kto: KtoConfig = Field(default_factory=KtoConfig)
     rft: RftConfig = Field(default_factory=RftConfig)
     infer: InferConfig = Field(default_factory=InferConfig)
     serve: ServeConfig = Field(default_factory=ServeConfig)

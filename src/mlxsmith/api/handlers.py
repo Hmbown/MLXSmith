@@ -261,7 +261,7 @@ def create_router(
         """Health check endpoint."""
         return HealthResponse(
             ok=True,
-            version="0.1.0",
+            version="0.1.4",
             model=base_model,
         )
     
@@ -550,7 +550,7 @@ def create_router(
             losses = []
             has_grads = False
             
-            if request.loss_type in ("dpo", "orpo"):
+            if request.loss_type in ("dpo", "orpo", "cpo", "ipo", "hinge", "simpo", "tdpo"):
                 # Preference training
                 if not request.rejected_responses:
                     raise HTTPException(

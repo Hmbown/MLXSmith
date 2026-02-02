@@ -37,6 +37,7 @@ from .config_models import (
     LoraConfig,
     ModelConfig,
     PrefConfig,
+    KtoConfig,
     ProjectConfig,
     RftConfig,
     RlmConfig,
@@ -51,6 +52,7 @@ __all__ = [
     "TrainConfig",
     "LoraConfig",
     "PrefConfig",
+    "KtoConfig",
     "RftConfig",
     "InferConfig",
     "ServeConfig",
@@ -78,6 +80,7 @@ class ProjectSettings(BaseSettings):
     train: TrainConfig = Field(default_factory=TrainConfig)
     lora: LoraConfig = Field(default_factory=LoraConfig)
     pref: PrefConfig = Field(default_factory=PrefConfig)
+    kto: KtoConfig = Field(default_factory=KtoConfig)
     rft: RftConfig = Field(default_factory=RftConfig)
     infer: InferConfig = Field(default_factory=InferConfig)
     serve: ServeConfig = Field(default_factory=ServeConfig)

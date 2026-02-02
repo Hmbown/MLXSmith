@@ -26,6 +26,6 @@ def test_pref_loss_variants(tmp_path: Path):
         {"prompt": "Say hi", "chosen": " hi", "rejected": " bye"},
     ])
 
-    for loss_type in ["dpo", "cpo", "orpo", "ipo", "hinge"]:
+    for loss_type in ["dpo", "cpo", "orpo", "ipo", "hinge", "simpo", "tdpo"]:
         cfg.pref.loss_type = loss_type
         run_pref(tmp_path, cfg, tmp_path / "data" / "prefs", run.adapter_dir, "none")

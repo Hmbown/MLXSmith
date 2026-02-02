@@ -24,6 +24,7 @@ from .train.sft import run_sft
 from .train.pref import run_pref
 from .train.rft import run_rft
 from .train.distill import run_distill
+from .train.kto import run_kto
 from .train.online_dpo import run_online_dpo
 from .train.self_verify import run_self_verify
 from .eval import run_eval
@@ -42,13 +43,8 @@ from .envs import (
     resolve_env_path as resolve_env_path_plugin,
     load_manifest as load_env_manifest,
 )
-from .integrations.mlx_lm_lora import (
-    build_train_command as build_mlx_lm_lora_train_command,
-    build_synthetic_command as build_mlx_lm_lora_synth_command,
-    build_judge_command as build_mlx_lm_lora_judge_command,
-    build_reward_functions_command as build_mlx_lm_lora_reward_functions_command,
-    run_command as run_mlx_lm_lora_command,
-)
+from .synthetic import generate_prompts, generate_sft, generate_dpo, generate_evolved_prompts
+from .sdk.losses import LOSS_REGISTRY
 
 app = typer.Typer(
     add_completion=False,
@@ -354,7 +350,7 @@ def pref(
     model: str = typer.Option(..., "--model", help="Base adapter or model path (e.g., runs/sft_0001/adapter)"),
     accel: Optional[str] = typer.Option(None, "--accel", help="Override accel.backend"),
     algo: Optional[str] = typer.Option(None, "--algo", help="Override pref.algo (legacy)"),
-    loss_type: Optional[str] = typer.Option(None, "--loss-type", help="dpo|cpo|orpo|ipo|hinge"),
+    loss_type: Optional[str] = typer.Option(None, "--loss-type", help="dpo|cpo|orpo|ipo|hinge|simpo|tdpo"),
 ):
     root = project_root_from_cwd()
     overrides = {}
@@ -369,6 +365,44 @@ def pref(
     )
     data_dir = root / data
     run = run_pref(root, cfg, data_dir, Path(model), cfg.accel.backend)
+    console.print(f"[bold]Run:[/bold] {run.run_dir}")
+
+
+@app.command()
+def kto(
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
+    data: str = typer.Option(..., "--data", help="JSONL with {prompt, response, label}"),
+    model: str = typer.Option(..., "--model"),
+    accel: Optional[str] = typer.Option(None, "--accel", help="Override accel.backend"),
+    reference_model: Optional[str] = typer.Option(None, "--reference-model"),
+    beta: Optional[float] = typer.Option(None, "--beta"),
+    loss_aversion: Optional[float] = typer.Option(None, "--loss-aversion"),
+    gain_power: Optional[float] = typer.Option(None, "--gain-power"),
+    loss_power: Optional[float] = typer.Option(None, "--loss-power"),
+    reference_point: Optional[float] = typer.Option(None, "--reference-point"),
+):
+    """Train with Kahneman-Tversky Optimization (binary feedback)."""
+    root = project_root_from_cwd()
+    overrides: dict[str, object] = {}
+    if reference_model is not None:
+        overrides["kto.reference_model"] = reference_model
+    if beta is not None:
+        overrides["kto.beta"] = beta
+    if loss_aversion is not None:
+        overrides["kto.loss_aversion"] = loss_aversion
+    if gain_power is not None:
+        overrides["kto.gain_power"] = gain_power
+    if loss_power is not None:
+        overrides["kto.loss_power"] = loss_power
+    if reference_point is not None:
+        overrides["kto.reference_point"] = reference_point
+    cfg = get_config(
+        config_path=config,
+        root=root,
+        accel_backend=accel,
+        **overrides,
+    )
+    run = run_kto(root, cfg, Path(data), model, cfg.accel.backend)
     console.print(f"[bold]Run:[/bold] {run.run_dir}")
 
 
@@ -528,80 +562,198 @@ def self_verify(
     console.print(f"[bold]Run:[/bold] {run.run_dir}")
 
 
-lora_app = typer.Typer(help="mlx-lm-lora passthrough commands")
-app.add_typer(lora_app, name="lora")
+synthetic_app = typer.Typer(help="Synthetic dataset generation")
+app.add_typer(synthetic_app, name="synthetic")
 
 
-@lora_app.command(
-    "train",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def lora_train(
-    ctx: typer.Context,
-    config: Optional[str] = typer.Option(None, "--config", help="mlx-lm-lora config path"),
-    model: Optional[str] = typer.Option(None, "--model", help="Model id or path"),
-    data: Optional[str] = typer.Option(None, "--data", help="Dataset path or HF dataset"),
-    train_mode: Optional[str] = typer.Option(None, "--train-mode", help="sft|dpo|orpo|grpo|ppo|..."),
-    train_type: Optional[str] = typer.Option(None, "--train-type", help="lora|dora|full"),
-    dry_run: bool = typer.Option(False, "--dry-run"),
+@synthetic_app.command("prompts")
+def synthetic_prompts(
+    model: str = typer.Option(..., "--model", help="Model id or path"),
+    out: str = typer.Option("data/synthetic_prompts.jsonl", "--out", help="Output JSONL path"),
+    num: int = typer.Option(50, "--num", help="Number of prompts to generate"),
+    seed_prompts: Optional[str] = typer.Option(None, "--seed-prompts", help="JSONL with seed prompts for few-shot"),
+    system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Override system prompt"),
+    max_new_tokens: int = typer.Option(256, "--max-new-tokens"),
+    temperature: float = typer.Option(0.9, "--temperature"),
+    seed: int = typer.Option(42, "--seed"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
 ):
-    """Run mlx-lm-lora training with passthrough args.
-
-    Use `--` to pass through any additional mlx-lm-lora flags.
-    """
+    """Generate synthetic task prompts."""
     root = project_root_from_cwd()
-    cmd = build_mlx_lm_lora_train_command(
-        config=config,
-        model=model,
-        data=data,
-        train_mode=train_mode,
-        train_type=train_type,
-        extra_args=list(ctx.args),
+    cfg = get_config(config_path=config, root=root, model_id=model)
+    out_path = Path(out) if Path(out).is_absolute() else root / out
+    sp = None
+    if seed_prompts:
+        sp = Path(seed_prompts)
+        if not sp.is_absolute():
+            sp = root / sp
+    n = generate_prompts(
+        model,
+        cfg,
+        out_path,
+        num=num,
+        seed_prompts=sp,
+        system_prompt=system_prompt,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        seed=seed,
+        project_root=root,
     )
-    run_mlx_lm_lora_command(cmd, dry_run=dry_run, cwd=root)
+    console.print(f"[bold]Generated[/bold] {n} prompts")
 
 
-@lora_app.command(
-    "synthetic",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def lora_synthetic(
-    ctx: typer.Context,
-    kind: str = typer.Argument(..., help="prompts|sft|dpo"),
-    dry_run: bool = typer.Option(False, "--dry-run"),
+@synthetic_app.command("evolve")
+def synthetic_evolve(
+    model: str = typer.Option(..., "--model", help="Model id or path"),
+    seeds: str = typer.Option(..., "--seeds", help="JSONL with seed prompts"),
+    out: str = typer.Option("data/synthetic_evolved.jsonl", "--out", help="Output JSONL path"),
+    num: int = typer.Option(50, "--num", help="Number of evolved prompts"),
+    mode: str = typer.Option("mix", "--mode", help="mix|deepen|broaden|complexify|constraints|multi_turn"),
+    system_prompt: Optional[str] = typer.Option(None, "--system-prompt", help="Override system prompt"),
+    max_new_tokens: int = typer.Option(256, "--max-new-tokens"),
+    temperature: float = typer.Option(0.9, "--temperature"),
+    seed: int = typer.Option(42, "--seed"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
 ):
-    """Run mlx-lm-lora synthetic dataset generation."""
+    """Evolve seed prompts into harder/more diverse instructions."""
     root = project_root_from_cwd()
-    cmd = build_mlx_lm_lora_synth_command(kind, extra_args=list(ctx.args))
-    run_mlx_lm_lora_command(cmd, dry_run=dry_run, cwd=root)
+    cfg = get_config(config_path=config, root=root, model_id=model)
+    seed_path = Path(seeds)
+    if not seed_path.is_absolute():
+        seed_path = root / seed_path
+    out_path = Path(out) if Path(out).is_absolute() else root / out
+    n = generate_evolved_prompts(
+        model,
+        cfg,
+        seed_path,
+        out_path,
+        num=num,
+        mode=mode,
+        system_prompt=system_prompt,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        seed=seed,
+        project_root=root,
+    )
+    console.print(f"[bold]Generated[/bold] {n} evolved prompts")
 
 
-@lora_app.command(
-    "judge",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def lora_judge(
-    ctx: typer.Context,
-    dry_run: bool = typer.Option(False, "--dry-run"),
+@synthetic_app.command("sft")
+def synthetic_sft(
+    model: str = typer.Option(..., "--model", help="Model id or path"),
+    prompts: str = typer.Option(..., "--prompts", help="Input JSONL with prompts"),
+    out: str = typer.Option("data/synthetic_sft.jsonl", "--out", help="Output JSONL path"),
+    candidates: int = typer.Option(1, "--candidates", help="Candidates per prompt"),
+    judge_model: Optional[str] = typer.Option(None, "--judge-model", help="Judge model id"),
+    judge_backend: str = typer.Option("mlx-lm", "--judge-backend"),
+    rubric: Optional[str] = typer.Option(None, "--rubric", help="Judge rubric text or file path"),
+    min_score: Optional[float] = typer.Option(None, "--min-score", help="Filter responses below this score"),
+    max_prompts: Optional[int] = typer.Option(None, "--max-prompts", help="Limit prompts processed"),
+    max_new_tokens: int = typer.Option(512, "--max-new-tokens"),
+    temperature: float = typer.Option(0.7, "--temperature"),
+    seed: int = typer.Option(42, "--seed"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
 ):
-    """Run mlx-lm-lora judge model training."""
+    """Generate synthetic SFT prompt-response pairs."""
     root = project_root_from_cwd()
-    cmd = build_mlx_lm_lora_judge_command(extra_args=list(ctx.args))
-    run_mlx_lm_lora_command(cmd, dry_run=dry_run, cwd=root)
+    cfg = get_config(config_path=config, root=root, model_id=model)
+    prompts_path = Path(prompts) if Path(prompts).is_absolute() else root / prompts
+    out_path = Path(out) if Path(out).is_absolute() else root / out
+    n = generate_sft(
+        model,
+        cfg,
+        prompts_path,
+        out_path,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        seed=seed,
+        candidates_per_prompt=candidates,
+        judge_model=judge_model,
+        judge_backend=judge_backend,
+        rubric=rubric,
+        min_score=min_score,
+        max_prompts=max_prompts,
+        project_root=root,
+    )
+    console.print(f"[bold]Generated[/bold] {n} SFT pairs")
 
 
-@lora_app.command(
-    "reward-functions",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-def lora_reward_functions(
-    ctx: typer.Context,
-    dry_run: bool = typer.Option(False, "--dry-run"),
+@synthetic_app.command("dpo")
+def synthetic_dpo(
+    model: str = typer.Option(..., "--model", help="Model id or path"),
+    prompts: str = typer.Option(..., "--prompts", help="Input JSONL with prompts"),
+    out: str = typer.Option("data/synthetic_dpo.jsonl", "--out", help="Output JSONL path"),
+    candidates: int = typer.Option(4, "--candidates", help="Candidates per prompt"),
+    judge_model: Optional[str] = typer.Option(None, "--judge-model", help="Judge model id"),
+    judge_backend: str = typer.Option("mlx-lm", "--judge-backend"),
+    rubric: Optional[str] = typer.Option(None, "--rubric", help="Judge rubric text or file path"),
+    min_margin: Optional[float] = typer.Option(None, "--min-margin", help="Skip pairs below this margin"),
+    max_prompts: Optional[int] = typer.Option(None, "--max-prompts", help="Limit prompts processed"),
+    max_new_tokens: int = typer.Option(512, "--max-new-tokens"),
+    temperature: float = typer.Option(0.8, "--temperature"),
+    seed: int = typer.Option(42, "--seed"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
 ):
-    """List mlx-lm-lora reward functions."""
+    """Generate synthetic DPO preference pairs."""
     root = project_root_from_cwd()
-    cmd = build_mlx_lm_lora_reward_functions_command(extra_args=list(ctx.args))
-    run_mlx_lm_lora_command(cmd, dry_run=dry_run, cwd=root)
+    cfg = get_config(config_path=config, root=root, model_id=model)
+    prompts_path = Path(prompts) if Path(prompts).is_absolute() else root / prompts
+    out_path = Path(out) if Path(out).is_absolute() else root / out
+    n = generate_dpo(
+        model,
+        cfg,
+        prompts_path,
+        out_path,
+        candidates_per_prompt=candidates,
+        judge_model=judge_model,
+        judge_backend=judge_backend,
+        rubric=rubric,
+        min_margin=min_margin,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        seed=seed,
+        max_prompts=max_prompts,
+        project_root=root,
+    )
+    console.print(f"[bold]Generated[/bold] {n} DPO pairs")
+
+
+@app.command()
+def judge(
+    model: str = typer.Option(..., "--model", help="Base model for judge SFT"),
+    data: str = typer.Option("data/judge", "--data", help="Judge training data directory"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
+    accel: Optional[str] = typer.Option(None, "--accel", help="Override accel.backend"),
+    lr: Optional[float] = typer.Option(None, "--lr"),
+    iters: Optional[int] = typer.Option(None, "--iters"),
+):
+    """Train a judge model via SFT on judge-format data."""
+    root = project_root_from_cwd()
+    cfg = get_config(
+        config_path=config,
+        root=root,
+        model_id=model,
+        accel_backend=accel,
+        lr=lr,
+        iters=iters,
+    )
+    data_dir = root / data
+    run = run_sft(root, cfg, data_dir, model, cfg.accel.backend)
+    console.print(f"[bold]Judge run:[/bold] {run.run_dir}")
+
+
+@app.command()
+def losses():
+    """List all registered loss functions."""
+    # Ensure loss functions are loaded
+    import mlxsmith.sdk.losses  # noqa: F811,F401
+    table = Table(title="Registered Loss Functions")
+    table.add_column("Name")
+    table.add_column("Function")
+    for name in sorted(LOSS_REGISTRY):
+        fn = LOSS_REGISTRY[name]
+        table.add_row(name, fn.__name__)
+    console.print(table)
 
 
 @app.command()

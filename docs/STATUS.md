@@ -9,7 +9,9 @@ Date: 2026-02-02
 - Reinforced fine-tuning (GRPO) with token-level environments and verifier-based rewards.
 - Knowledge distillation (offline and OPD modes).
 - OpenAI-compatible `/v1/chat/completions` endpoint + streaming.
-- mlx-lm-lora passthrough (advanced training modes + synthetic datasets).
+- KTO (binary feedback) training pipeline.
+- New preference losses: SimPO, TDPO.
+- Synthetic data: Evol-Instruct prompt evolution + rejection-sampled SFT.
 - HF auth helpers: `mlxsmith auth login/status/logout`.
 - Dataset presets, pull, import, split, stats, validation.
 - Built-in verifiers: regex, jsonschema, pytest (sandboxed), docker, compose, llm_judge.
