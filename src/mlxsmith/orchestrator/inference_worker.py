@@ -26,7 +26,7 @@ from fastapi.responses import StreamingResponse
 from ..config import ProjectConfig
 from ..llm.registry import get_llm_backend
 from ..models import resolve_model_spec
-from ..rlm.weights import WeightPointerStore, WeightPointerIPC
+from ..rlm.weights import WeightPointerStore
 from .queue import MessageQueue, MessageType, Message
 
 

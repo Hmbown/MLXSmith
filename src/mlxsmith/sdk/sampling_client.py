@@ -27,8 +27,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Union, Callable
-import concurrent.futures
+from typing import Any, Dict, List, Optional, Sequence
 
 from .future import APIFuture, SdkFuturePool
 

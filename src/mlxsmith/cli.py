@@ -564,7 +564,7 @@ def config_validate(
     
     try:
         cfg = load_config(cfg_path, require=True)
-        console.print(f"[green]✓ Configuration is valid[/green]")
+        console.print("[green]✓ Configuration is valid[/green]")
         
         # Show summary
         table = Table(title="Configuration Summary")
@@ -593,9 +593,9 @@ def config_env(
     """Show available environment variables."""
     cfg = ProjectConfig()
     
-    console.print(f"\n[bold]Environment Variable Configuration[/bold]")
+    console.print("\n[bold]Environment Variable Configuration[/bold]")
     console.print(f"Prefix: [cyan]{prefix}[/cyan]")
-    console.print(f"Nested delimiter: [cyan]__[/cyan] (double underscore)\n")
+    console.print("Nested delimiter: [cyan]__[/cyan] (double underscore)\n")
     
     table = Table(title=f"Available {prefix}* Environment Variables")
     table.add_column("Environment Variable")

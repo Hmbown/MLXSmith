@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import signal
-import sys
 import time
 import traceback
 from collections import defaultdict
@@ -17,7 +16,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..config import ProjectConfig
 from ..llm.registry import get_llm_backend
 from ..rlm.inference import Rollout
 from ..rlm.weights import WeightPointerStore, WeightPointerIPC

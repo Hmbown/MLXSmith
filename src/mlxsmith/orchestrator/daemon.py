@@ -9,27 +9,22 @@ Manages rollout requests, training batches, and weight updates.
 
 from __future__ import annotations
 
-import json
 import multiprocessing as mp
 import signal
-import sys
 import time
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 
 from ..config import ProjectConfig
-from ..rlm.corpus import append_corpus, load_corpus, sample_corpus
-from ..rlm.gating import load_state, save_state, should_accept, update_state
-from ..rlm.history import append_history
-from ..rlm.inference import Rollout, build_tasks
+from ..rlm.gating import load_state
 from ..rlm.weights import WeightPointerStore, WeightPointerIPC
 from ..runs import new_run, snapshot_config
-from ..util import ensure_dir, now_ts, write_jsonl
-from .queue import MessageQueue, MessageType, Message
+from ..util import ensure_dir, now_ts
+from .queue import MessageQueue, MessageType
 from .inference_worker import InferenceConfig, run_inference_worker
 from .trainer_worker import TrainerConfig, run_trainer_worker
 

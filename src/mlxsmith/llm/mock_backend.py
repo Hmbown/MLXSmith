@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Sequence, Any, List, Dict, Optional
+from typing import Sequence, Any, List, Dict
 
 from .backend import Generation
 

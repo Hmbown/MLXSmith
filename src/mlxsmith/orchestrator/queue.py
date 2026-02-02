@@ -11,11 +11,11 @@ import json
 import multiprocessing as mp
 import time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 from queue import Empty
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 
 class MessageType(Enum):

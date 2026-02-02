@@ -1,7 +1,5 @@
 """Tests for MLXSmith API handlers and schemas."""
 
-import pytest
-from pathlib import Path
 
 # Schemas
 from mlxsmith.api.schemas import (
@@ -12,14 +10,12 @@ from mlxsmith.api.schemas import (
     RolloutRequest,
     RolloutResponse,
     AdapterReloadRequest,
-    AdapterReloadResponse,
     RLMState,
     RLMTrainingMetrics,
     RLMHistoryEntry,
     ModelInfo,
     ModelsListResponse,
     ModelPullRequest,
-    ModelPullResponse,
     HFTokenRequest,
     HFTokenResponse,
     HealthResponse,
