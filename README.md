@@ -2,7 +2,7 @@
 
 Apple Silicon MLX fine-tuning toolkit — SFT, DPO/ORPO, GRPO, distillation, and OpenAI-compatible serving.
 
-**Status:** alpha (v0.1.1). Full training pipeline validated on Qwen3-4B.
+**Status:** alpha (v0.1.2). Full training pipeline validated on Qwen3-4B.
 
 ## Install
 
