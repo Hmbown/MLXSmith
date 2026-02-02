@@ -325,7 +325,7 @@ def create_app(model_spec: str, cfg: ProjectConfig) -> FastAPI:
     app = FastAPI(
         title="mlxsmith",
         description="MLXSmith API server for local LLM inference and RLM training",
-        version="0.1.4",
+        version="0.1.5",
     )
     
     # Load LLM backend

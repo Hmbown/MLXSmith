@@ -261,7 +261,7 @@ def create_router(
         """Health check endpoint."""
         return HealthResponse(
             ok=True,
-            version="0.1.4",
+            version="0.1.5",
             model=base_model,
         )
     
