@@ -33,13 +33,15 @@ mlxsmith doctor        # check Python, MLX, Metal
 
 ## Training
 
-### SFT (LoRA/QLoRA)
+### SFT (LoRA/QLoRA/DoRA/Full)
 
 ```bash
 mlxsmith sft --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 --data data/sft
 ```
 
 Produces run artifacts under `runs/sft_NNNN/` (adapter weights, `metrics.jsonl`, config snapshot).
+
+Fine-tune type is configurable via `lora.fine_tune_type`: `lora` (default), `dora` (weight-decomposed LoRA), or `full` (full parameter fine-tuning). Target modules, rank, alpha, and dropout are all configurable under the `lora` config section.
 
 ### Preference tuning (DPO/ORPO)
 
@@ -48,7 +50,7 @@ mlxsmith pref --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 \
   --data data/prefs --algo dpo
 ```
 
-Supports DPO and ORPO algorithms with configurable beta and KL coefficients. Expects `{prompt, chosen, rejected}` data format.
+Supports 7 preference loss types via `--loss-type`: `dpo` (default), `cpo`, `orpo`, `ipo`, `hinge`, `simpo`, `tdpo`. Configurable beta, KL coefficients, and optional reference model. Expects `{prompt, chosen, rejected}` data format.
 
 ### KTO (binary feedback)
 
@@ -66,6 +68,26 @@ mlxsmith rft --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 \
 ```
 
 GRPO-style RL training with token-level environment integration and verifier-based rewards. Rollout acceptance/rejection gating with reward tracking.
+
+Loss variants via `--loss-type`: `grpo` (default), `dr_grpo` (distributionally robust GRPO), `dapo` (dynamic advantage PO). Supports `--epsilon-low`/`--epsilon-high` clipping and `--token-level-loss/--sequence-level-loss` modes.
+
+### Online DPO
+
+```bash
+mlxsmith online-dpo --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 \
+  --data data/prompts.jsonl --judge-model mlx-community/Qwen3-4B-Instruct-2507-4bit
+```
+
+Generates multiple candidate responses per prompt online, scores them with an LLM judge, and trains on the best/worst pair using preference loss. Supports configurable `--group-size`, `--rubric`, and all preference loss types.
+
+### Self-verify training
+
+```bash
+mlxsmith self-verify --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 \
+  --data data/prompts.jsonl --rubric verifiers/rubrics/coding.txt
+```
+
+Advantage-weighted policy gradient where the model generates a response and an LLM judge (optionally the same model) assigns a reward. Uses EMA-baselined advantages to upweight good completions and downweight bad ones. Supports `--verifier-model` and `--rubric`.
 
 ### Knowledge distillation
 
@@ -90,12 +112,16 @@ mlxsmith pipeline
 # Generate prompts
 mlxsmith synthetic prompts --model mlx-community/Qwen3-4B-Instruct-2507-4bit --num 1000
 
-# Evol-Instruct style prompt evolution
+# Evol-Instruct style prompt evolution (modes: mix, deepen, broaden, complexify, constraints, multi_turn)
 mlxsmith synthetic evolve --model mlx-community/Qwen3-4B-Instruct-2507-4bit --seeds data/prompts.jsonl
 
 # Rejection-sampled SFT
 mlxsmith synthetic sft --model mlx-community/Qwen3-4B-Instruct-2507-4bit --prompts data/prompts.jsonl \
   --candidates 4 --judge-model mlx-community/Qwen3-4B-Instruct-2507-4bit
+
+# Synthetic DPO preference pairs
+mlxsmith synthetic dpo --model mlx-community/Qwen3-4B-Instruct-2507-4bit --prompts data/prompts.jsonl \
+  --candidates 4 --judge-model mlx-community/Qwen3-4B-Instruct-2507-4bit --min-margin 0.2
 ```
 
 ## Serving
@@ -112,7 +138,7 @@ curl http://localhost:8080/v1/chat/completions \
   -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":64}'
 ```
 
-Supports streaming (`"stream": true`), logprobs, stop sequences, and an optional UI dashboard (`serve.ui: true` in config).
+Supports streaming (`"stream": true`), logprobs, stop sequences, adapter hot-reload at runtime, and an optional UI dashboard (`serve.ui: true` in config).
 
 ## Data tools
 
@@ -160,6 +186,14 @@ mlxsmith bench --mode trainer
 mlxsmith bench --mode end_to_end
 ```
 
+## Judge training
+
+```bash
+mlxsmith judge --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 --data data/judge
+```
+
+Fine-tunes a judge model via SFT on judge-format data for use with `--judge-model` in online DPO, self-verify, and synthetic data commands.
+
 ## Verifiers
 
 Built-in verifiers for eval, RFT, and preference tuning:
@@ -169,7 +203,8 @@ Built-in verifiers for eval, RFT, and preference tuning:
 - **pytest** — sandboxed test execution
 - **docker** — containerized verification
 - **compose** — multi-verifier composition (AND/OR/weighted)
-- **llm_judge** — LLM-based self-verification / ThinkPRM-style verifier
+- **llm_judge** — LLM-based self-verification with rubric support
+- **prime** — PRIME-style implicit process rewards: wraps any base verifier and uses EMA-updated per-step values to compute step-level (process) rewards. Supports `mean`, `min`, and `product` aggregation modes
 
 See `docs/VERIFIERS.md` for the verifier API.
 
@@ -179,8 +214,11 @@ See `docs/VERIFIERS.md` for the verifier API.
 mlxsmith env list                  # list available environments
 mlxsmith env info envs/coding.yaml # show manifest (tasks, verifier, version)
 mlxsmith env init my_env           # scaffold a new environment
-mlxsmith env install ./my_env      # install from directory
+mlxsmith env install ./my_env      # install from directory or registry
 mlxsmith env package ./my_env      # create distributable tarball
+mlxsmith env publish ./my_env.tar.gz  # publish to local registry
+mlxsmith env pull my_env           # pull from registry (supports name@version)
+mlxsmith env registry              # show registry contents
 mlxsmith env run envs/coding.yaml  # execute RFT with this environment
 ```
 
@@ -198,8 +236,12 @@ mlxsmith config env               # show environment variable mapping
 
 Config sources (in priority order): CLI flags > environment variables (`MLXSMITH__SECTION__KEY`) > config file > defaults.
 
-Training optimizers are configurable via `train.optimizer` and `train.optimizer_kwargs`
-(for example `adamw`, `adam`, `qhadam`, `muon` when available in MLX).
+Training optimizers are configurable via `train.optimizer` and `train.optimizer_kwargs`:
+
+- **adamw** (default) — AdamW with weight decay
+- **adam** — standard Adam
+- **qhadam** — Quantized Hadamard Adam
+- **muon** — Newton-Schulz orthogonalization for 2D gradients (configurable `ns_iters`, `a`, `b`, `c` coefficients via `train.optimizer_kwargs`)
 
 ## SDK (programmatic API)
 
@@ -221,7 +263,24 @@ fb = trainer.forward_backward(batch)
 trainer.optim_step(fb.result().grads)
 ```
 
-Loss functions: DPO, ORPO, GRPO, CISPO, DRO, PPO, importance sampling, cross-entropy.
+Loss functions (14 registered — run `mlxsmith losses` to list):
+
+| Loss | Description |
+|------|-------------|
+| `dpo` | Direct Preference Optimization (optional KL regularization) |
+| `cpo` | Cross-entropy Preference Optimization (reference-free) |
+| `ipo` | Integral Preference Optimization |
+| `orpo` | Odds Ratio Preference Optimization (with NLL term) |
+| `simpo` | Simple PO — reference-free, length-normalized |
+| `tdpo` | Token-level DPO (mean token logprobs) |
+| `hinge` | Hinge loss with configurable margin |
+| `kto` | Kahneman-Tversky Optimization (binary feedback) |
+| `ppo` | Proximal Policy Optimization (clipped ratio) |
+| `cispo` | Contrastive Importance-Sampling PO |
+| `dro` | Distributionally Robust Optimization |
+| `importance_sampling` | Importance-weighted policy gradient (for distillation) |
+| `cross_entropy` | Standard NLL / SFT loss |
+| `preference` | Meta-loss that dispatches to any of the above by `algo` name |
 
 ## Research
 
