@@ -52,7 +52,6 @@ serve = [
   "uvicorn>=0.40.0",
   "httpx>=0.28.0",
 ]
-zmlx = ["zmlx"]
 dev = ["pytest>=9.0.0", "ruff>=0.14.0"]
 all = [
   "mlx>=0.30.4",

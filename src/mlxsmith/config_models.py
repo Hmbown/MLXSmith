@@ -6,7 +6,7 @@ from typing import Dict, List, Literal, Optional, Any
 
 from pydantic import BaseModel, Field, field_validator
 
-AccelBackendName = Literal["none", "zmlx"]
+AccelBackendName = Literal["none"]
 
 
 class ModelConfig(BaseModel):

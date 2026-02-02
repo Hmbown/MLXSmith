@@ -83,7 +83,6 @@ def doctor():
     table.add_row("cpu_count", str(info.cpu_count))
     table.add_row("metal", str(info.has_metal))
     table.add_row("mlx", f"{info.has_mlx} {info.mlx_version or ''}".strip())
-    table.add_row("zmlx", str(info.has_zmlx))
     console.print(table)
 
 
@@ -729,7 +728,7 @@ def rlm_history(limit: int = typer.Option(10, "--limit")):
 
 @accel_app.command("status")
 def accel_status():
-    backends = ["none", "zmlx"]
+    backends = ["none"]
     table = Table(title="mlxsmith accel status")
     table.add_column("backend")
     table.add_column("available")

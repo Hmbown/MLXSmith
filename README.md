@@ -2,7 +2,7 @@
 
 Apple Silicon MLX fine-tuning toolkit — SFT, DPO/ORPO, GRPO, distillation, and OpenAI-compatible serving.
 
-**Status:** alpha (v0.1.0). Full training pipeline validated on Qwen3-4B.
+**Status:** alpha (v0.1.1). Full training pipeline validated on Qwen3-4B.
 
 ## Install
 
@@ -28,7 +28,7 @@ pip install "mlxsmith[all]"
 ```bash
 mlxsmith init myproj
 cd myproj
-mlxsmith doctor        # check Python, MLX, Metal, ZMLX
+mlxsmith doctor        # check Python, MLX, Metal
 ```
 
 ## Training
@@ -211,14 +211,6 @@ mlxsmith rlm history               # view history
 ```
 
 Includes task generation, mutation for data diversity, corpus management, EMA-based gating, and weight pointer IPC for multi-process coordination. See `docs/orchestrator.md`.
-
-### ZMLX acceleration
-
-Optional zero-copy MLX acceleration backend.
-
-```bash
-mlxsmith accel status
-```
 
 ## Docs
 

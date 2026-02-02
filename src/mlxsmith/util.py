@@ -46,7 +46,6 @@ class SystemInfo:
     has_metal: Optional[bool]
     has_mlx: bool
     mlx_version: Optional[str]
-    has_zmlx: bool
 
 def detect_system() -> SystemInfo:
     has_mlx = False
@@ -57,10 +56,6 @@ def detect_system() -> SystemInfo:
         mlx_version = getattr(mlx, "__version__", None)
     except Exception:
         pass
-
-    import importlib.util
-
-    has_zmlx = importlib.util.find_spec("zmlx") is not None
 
     # Metal detection (best-effort): on macOS we assume Metal is present; for CI, this is not reliable.
     has_metal = None
@@ -83,7 +78,6 @@ def detect_system() -> SystemInfo:
         has_metal=has_metal,
         has_mlx=has_mlx,
         mlx_version=mlx_version,
-        has_zmlx=has_zmlx,
     )
 
 def require(cond: bool, msg: str):
