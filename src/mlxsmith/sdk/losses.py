@@ -39,6 +39,18 @@ def _to_mx_scalar(mx: Any, value: Any) -> Any:
         return value
 
 
+def _coerce_logprob(mx: Any, value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        total = 0.0
+        for v in value:
+            try:
+                total += float(v)
+            except Exception:
+                total += float(_to_mx_scalar(mx, v))
+        return _to_mx_scalar(mx, total)
+    return value
+
+
 def preference_diff(
     backend,
     chosen_ids: Sequence[int],
@@ -192,6 +204,7 @@ def importance_sampling_loss(
     logp = backend.sequence_logprob(token_ids, prompt_len=prompt_len)
     if behavior_logprob is None:
         behavior_logprob = logp
+    behavior_logprob = _coerce_logprob(mx, behavior_logprob)
     ratio = mx.exp(logp - behavior_logprob)
     return -ratio * _to_mx_scalar(mx, advantage)
 

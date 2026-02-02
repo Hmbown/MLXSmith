@@ -8,6 +8,7 @@ Supports explicit weight reloading without restart.
 from __future__ import annotations
 
 import asyncio
+import threading
 import json
 import signal
 import sys
@@ -33,6 +34,7 @@ from .queue import MessageQueue, MessageType, Message
 class InferenceConfig:
     """Configuration for inference worker."""
     model_spec: str
+    backend: str = "mlx-lm"
     host: str = "0.0.0.0"
     port: int = 8080
     max_seq_len: int = 8192
@@ -71,7 +73,7 @@ class InferenceWorker:
         
     def _load_model(self) -> None:
         """Load the base model and initial adapter."""
-        self._llm = get_llm_backend("mlx-lm")
+        self._llm = get_llm_backend(self.config.backend)
         
         # Resolve model spec
         base_model, adapter_path, _ = resolve_model_spec(
@@ -161,14 +163,34 @@ class InferenceWorker:
         self._check_weight_updates()
         
         # Generate rollout
-        gen = self._llm.generate_with_logprobs(
-            prompt,
-            max_new_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            seed=seed,
-        )
+        try:
+            gen = self._llm.generate_with_logprobs(
+                prompt,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                seed=seed,
+            )
+        except TypeError:
+            try:
+                gen = self._llm.generate_with_logprobs(
+                    prompt,
+                    max_new_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    seed=seed,
+                )
+            except TypeError:
+                gen = self._llm.generate_with_logprobs(
+                    prompt,
+                    max_new_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k_sampling=top_k,
+                    seed=seed,
+                )
         
         completion = gen.text[len(prompt):] if gen.text.startswith(prompt) else gen.text
         
@@ -213,6 +235,7 @@ class InferenceWorker:
         return Message(
             msg_type=MessageType.HEALTH_RESPONSE,
             payload={
+                "request_id": msg.msg_id,
                 "status": "healthy",
                 "base_model": self._base_model,
                 "adapter_path": self._current_adapter,
@@ -303,7 +326,7 @@ class InferenceWorker:
                 max_new_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
-                top_k=top_k,
+                top_k_sampling=top_k,
                 seed=seed,
             )
             
@@ -407,11 +430,11 @@ class InferenceWorker:
             yield f"data: {json.dumps(payload)}\n\n"
             yield "data: [DONE]\n\n"
     
-    async def _queue_worker(self):
-        """Background worker for queue-based communication."""
+    def _queue_worker_loop(self) -> None:
+        """Background thread for queue-based communication."""
         if not self.queue:
             return
-        
+
         while not self._shutdown_event.is_set():
             try:
                 msg = self.queue.receive("rollout_requests", timeout=0.1)
@@ -419,16 +442,15 @@ class InferenceWorker:
                     response = self._handle_queue_message(msg)
                     if response:
                         self.queue.get_queue("rollout_responses").put(response.to_dict())
-                
-                # Check weight update queue
+
                 weight_msg = self.queue.receive("weight_forward", timeout=0)
                 if weight_msg:
                     self._handle_weight_update(weight_msg)
-                    
+
             except Exception as e:
                 print(f"[InferenceWorker] Queue error: {e}")
-            
-            await asyncio.sleep(0.01)
+
+            time.sleep(0.01)
     
     def run(self) -> None:
         """Run the inference worker."""
@@ -452,8 +474,8 @@ class InferenceWorker:
         
         # Start queue worker if enabled
         if self.queue:
-            loop = asyncio.get_event_loop()
-            loop.create_task(self._queue_worker())
+            thread = threading.Thread(target=self._queue_worker_loop, daemon=True)
+            thread.start()
         
         # Start uvicorn server
         print(f"[InferenceWorker] Starting server on {self.config.host}:{self.config.port}")

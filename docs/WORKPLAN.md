@@ -20,10 +20,11 @@ PrimeIntellect/Tinker parity and to ship both a web app + a SwiftUI macOS app.
 - Loss registry: cross_entropy, DPO/ORPO + RL losses (IS/PPO/CISPO/DRO).
 - Internal rollout endpoint returning tokens + logprobs (`server.py`).
 - Adapter hot‑reload endpoint (`server.py`).
-- Distillation: offline + OPD (simplified) (`train/distill.py`).
+- Distillation: offline + OPD (teacher logprobs + reverse‑KL advantages) (`train/distill.py`).
 - Bench modes: inference, trainer, end‑to‑end (`bench.py`).
 - Serve UI + RLM monitor endpoints (`server.py`).
 - Environment plugin system + local registry (`envs/system.py`).
+- Orchestrated mode: queue‑driven inference + trainer workers (`rlm/loop.py`, `orchestrator/*`).
 - Weight pointers for inference/trainer staleness (`rlm/weights.py`).
 - Config precedence (CLI > config > env) via `pydantic-settings` + `MLXSMITH__` env prefix.
 - HF auth helpers: `mlxsmith auth login/status/logout`.
@@ -31,22 +32,7 @@ PrimeIntellect/Tinker parity and to ship both a web app + a SwiftUI macOS app.
 ### Remaining parity gaps (highest priority)
 
 #### A) Orchestrator / Inference / Trainer **multi‑process split**
-**Gap:** currently split is in‑process only (single process). PRIME‑RL runs
-orchestrator, inference, and trainer as separate processes communicating async.
-
-**Do:**
-- Add a lightweight orchestrator daemon (queue + job scheduler).
-- Run inference server as OpenAI‑compatible API with explicit weight updates.
-- Trainer reads batches from queue, updates weights, publishes adapter pointers.
-
-**Targets:**
-- `src/mlxsmith/orchestrator/*` (new)
-- `src/mlxsmith/rlm/loop.py` (convert to orchestrator entrypoint)
-- `src/mlxsmith/server.py` (extend update_weights endpoints)
-
-**Definition of done:**
-- A queued rollout flow works with a separate inference server.
-- Trainer can update weights without restart; inference picks up updates.
+**Status:** ✅ Implemented (queue‑driven rollouts + trainer worker + hot reload).
 
 #### C) Environment Hub parity
 **Gap:** environments are local; PRIME uses installable packages + hub.
@@ -58,8 +44,10 @@ orchestrator, inference, and trainer as separate processes communicating async.
 
 **Targets:**
 - `src/mlxsmith/envs/system.py` (expand)
-- New `src/mlxsmith/envs/hub.py`
+- Optional `src/mlxsmith/envs/hub.py`
 - Docs + CLI
+
+**Status:** `env init` scaffolds a Python package; local registry supports `env list/info/pull` and version pinning (registry-only).
 
 #### D) Tinker API parity (futures + logprobs)
 **Gap:** threadpool futures exist, but no TrainingClient‑style API or prompt
@@ -75,16 +63,7 @@ logprobs top‑k for distillation.
 - `src/mlxsmith/llm/*` (support top‑k)
 
 #### E) OPD (on‑policy distillation) — faithful version
-**Gap:** OPD is simplified; missing teacher logprobs + reverse‑KL advantages.
-
-**Do:**
-- Compute teacher logprobs for student samples.
-- Set per‑token advantage = negative reverse KL (per OPD blog).
-- Train with `importance_sampling` loss using behavior logprobs.
-
-**Targets:**
-- `src/mlxsmith/train/distill.py`
-- `src/mlxsmith/sdk/losses.py`
+**Status:** ✅ Implemented (teacher logprobs + reverse‑KL advantages + IS loss).
 
 #### F) Token‑level RL environments
 **Gap:** Tinker RL envs operate on tokens (initial_observation/step).

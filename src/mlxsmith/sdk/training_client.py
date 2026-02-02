@@ -33,6 +33,8 @@ class ForwardBackwardResult:
     loss: float
     grads: Any  # Backend-specific gradient type
     metrics: Dict[str, float]
+    batch_size: int = 1
+    has_grads: bool = False
 
 
 @dataclass
@@ -57,6 +59,7 @@ class WeightsResult:
     weights: Dict[str, Any]
     success: bool
     message: str
+    num_tensors: int = 0
 
 
 class TrainingBatch:
@@ -258,10 +261,11 @@ class TrainingClient:
             return ForwardBackwardResult(
                 loss=avg_loss,
                 grads=grads,
+                batch_size=len(batch),
+                has_grads=grads is not None,
                 metrics={
-                    "batch_size": len(batch),
-                    "loss": avg_loss,
-                    "has_grads": grads is not None,
+                    "avg_loss": avg_loss,
+                    "num_samples": len(losses),
                 }
             )
         
@@ -457,12 +461,14 @@ class TrainingClient:
                     weights=weights,
                     success=True,
                     message=f"Retrieved {len(weights)} weight tensors",
+                    num_tensors=len(weights),
                 )
             except Exception as e:
                 return WeightsResult(
                     weights={},
                     success=False,
                     message=f"Failed to get weights: {e}",
+                    num_tensors=0,
                 )
         
         return self.pool.submit(_run_get_weights)
@@ -493,12 +499,14 @@ class TrainingClient:
                     weights=weights,
                     success=True,
                     message=f"Set {len(weights)} weight tensors",
+                    num_tensors=len(weights),
                 )
             except Exception as e:
                 return WeightsResult(
                     weights={},
                     success=False,
                     message=f"Failed to set weights: {e}",
+                    num_tensors=0,
                 )
         
         return self.pool.submit(_run_set_weights)

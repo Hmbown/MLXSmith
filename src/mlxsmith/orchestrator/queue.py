@@ -119,6 +119,22 @@ class MessageQueue:
         self._maxsize = maxsize
         self._queues: Dict[str, mp.Queue] = {}
         self._manager: Optional[mp.managers.SyncManager] = None
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Support pickling for multiprocessing spawn.
+
+        Manager objects are not picklable, but proxy queues are.
+        """
+        return {
+            "_maxsize": self._maxsize,
+            "_queues": self._queues,
+            "_manager": None,
+        }
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        self._maxsize = state.get("_maxsize", 1000)
+        self._queues = state.get("_queues", {})
+        self._manager = None
         
     def start(self) -> None:
         """Start the queue manager and create queues."""

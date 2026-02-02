@@ -22,7 +22,6 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable
 
-import requests
 from rich.console import Console
 
 from ..config import ProjectConfig
@@ -31,7 +30,7 @@ from ..llm.registry import get_llm_backend
 from ..models import resolve_model_spec
 from ..runs import new_run, snapshot_config
 from ..train.lora import LoRAConfig
-from ..util import ensure_dir, now_ts, write_jsonl
+from ..util import copytree, ensure_dir, now_ts, write_jsonl
 from ..verifiers.docker_verifier import verify as docker_verify
 from ..verifiers.pytest_verifier import verify as pytest_verify
 from .corpus import append_corpus, load_corpus, sample_corpus
@@ -410,6 +409,12 @@ class RLMOrchestrator:
         self.model_spec = model_spec
         self.iterations = iterations
         self.resume = resume
+
+        self._base_model, self._initial_adapter, _ = resolve_model_spec(
+            self.project_root, self.model_spec, self.cfg
+        )
+        self._rollout_timeout_s = 120.0
+        self._train_timeout_s = 900.0
         
         # Paths
         self.state_path = project_root / "runs" / "rlm_state.json"
@@ -447,6 +452,7 @@ class RLMOrchestrator:
         """Start the inference worker process."""
         inf_config = InferenceConfig(
             model_spec=self.model_spec,
+            backend=self.cfg.model.backend,
             host=self.cfg.serve.host,
             port=self.cfg.serve.port,
             max_seq_len=self.cfg.model.max_seq_len,
@@ -457,15 +463,10 @@ class RLMOrchestrator:
             hot_reload=True,
         )
         
-        # Get base model for pointer
-        base_model, adapter_path, _ = resolve_model_spec(
-            self.project_root, self.model_spec, self.cfg
-        )
-        
         # Initialize inference pointer
         pointer = WeightPointerIPC(
-            base_model=base_model,
-            adapter_path=str(adapter_path) if adapter_path else None,
+            base_model=self._base_model,
+            adapter_path=str(self._initial_adapter) if self._initial_adapter else None,
             iteration=self.gating_state.last_iteration,
             updated_at=now_ts(),
             version=self.gating_state.last_iteration,
@@ -475,7 +476,7 @@ class RLMOrchestrator:
         
         self._inference_process = mp.Process(
             target=run_inference_worker,
-            args=(inf_config,),
+            args=(inf_config, self.queue),
             name="inference_worker",
             daemon=False,
         )
@@ -484,13 +485,10 @@ class RLMOrchestrator:
     
     def _start_trainer_worker(self) -> None:
         """Start the trainer worker process."""
-        base_model, adapter_path, _ = resolve_model_spec(
-            self.project_root, self.model_spec, self.cfg
-        )
-        
         trainer_config = TrainerConfig(
             model_spec=self.model_spec,
-            base_model=base_model,
+            base_model=self._base_model,
+            backend=self.cfg.model.backend,
             max_seq_len=self.cfg.model.max_seq_len,
             dtype=self.cfg.model.dtype,
             trust_remote_code=self.cfg.model.trust_remote_code,
@@ -510,8 +508,8 @@ class RLMOrchestrator:
         
         # Initialize trainer pointer
         pointer = WeightPointerIPC(
-            base_model=base_model,
-            adapter_path=str(adapter_path) if adapter_path else None,
+            base_model=self._base_model,
+            adapter_path=str(self._initial_adapter) if self._initial_adapter else None,
             iteration=self.gating_state.last_iteration,
             updated_at=now_ts(),
             version=self.gating_state.last_iteration,
@@ -521,7 +519,7 @@ class RLMOrchestrator:
         
         self._trainer_process = mp.Process(
             target=run_trainer_worker,
-            args=(trainer_config,),
+            args=(trainer_config, self.queue),
             name="trainer_worker",
             daemon=False,
         )
@@ -531,14 +529,9 @@ class RLMOrchestrator:
     def _stop_workers(self) -> None:
         """Stop all worker processes."""
         console.print("[yellow]Stopping workers...[/yellow]")
-        
-        # Send shutdown messages via API
         try:
-            requests.post(
-                f"http://localhost:{self.cfg.serve.port}/internal/adapter/reload",
-                json={"shutdown": True},
-                timeout=5.0,
-            )
+            self.queue.send("rollout_requests", MessageType.SHUTDOWN, {}, source="orchestrator")
+            self.queue.send("control", MessageType.SHUTDOWN, {}, source="orchestrator")
         except Exception:
             pass
         
@@ -556,15 +549,13 @@ class RLMOrchestrator:
         console.print("[green]Workers stopped[/green]")
     
     def _wait_for_inference(self, timeout: float = 60.0) -> bool:
-        """Wait for inference server to be ready."""
+        """Wait for inference worker to be ready via queue health check."""
         start = time.time()
-        while time.time() - start < timeout:
+        while time.time() - start < timeout and not self._shutdown:
             try:
-                resp = requests.get(
-                    f"http://localhost:{self.cfg.serve.port}/health",
-                    timeout=1.0,
-                )
-                if resp.status_code == 200:
+                self.queue.send("rollout_requests", MessageType.HEALTH_CHECK, {}, source="orchestrator")
+                msg = self.queue.receive("rollout_responses", timeout=1.0)
+                if msg and msg.msg_type == MessageType.HEALTH_RESPONSE:
                     return True
             except Exception:
                 pass
@@ -577,6 +568,7 @@ class RLMOrchestrator:
         rollouts_per_task: int,
     ) -> List[Rollout]:
         """Generate rollouts for a task via inference API."""
+        import requests
         rollouts = []
         
         for k in range(rollouts_per_task):
@@ -647,7 +639,7 @@ class RLMOrchestrator:
                     passed=passed,
                     reward=reward,
                     verifier_latency_ms=latency_ms,
-                    weight_adapter=self._pointer_store.load("inference", "").adapter_path,
+                    weight_adapter=self._pointer_store.load("inference", self._base_model).adapter_path,
                 ))
                 
                 if passed:
@@ -664,12 +656,147 @@ class RLMOrchestrator:
                 continue
         
         return rollouts
+
+    def _generate_rollout_via_queue(
+        self,
+        task: GeneratedTask,
+        rollouts_per_task: int,
+    ) -> List[Rollout]:
+        """Generate rollouts for a task via the message queue."""
+        rollouts: List[Rollout] = []
+
+        for k in range(rollouts_per_task):
+            try:
+                req = self.queue.send(
+                    "rollout_requests",
+                    MessageType.ROLLOUT_REQUEST,
+                    {
+                        "prompt": task.prompt,
+                        "max_tokens": int(self.cfg.rft.max_new_tokens),
+                        "temperature": float(self.cfg.rft.temperature),
+                        "top_p": float(self.cfg.infer.top_p),
+                        "top_k": self.cfg.infer.top_k,
+                        "seed": int(time.time() * 1000) % (2**31 - 1),
+                    },
+                    source="orchestrator",
+                )
+
+                # Wait for matching response
+                response = None
+                start = time.time()
+                while time.time() - start < self._rollout_timeout_s:
+                    msg = self.queue.receive("rollout_responses", timeout=0.5)
+                    if not msg:
+                        continue
+                    if msg.msg_type != MessageType.ROLLOUT_RESPONSE:
+                        continue
+                    if msg.payload.get("request_id") == req.msg_id:
+                        response = msg
+                        break
+
+                if response is None:
+                    console.print("[red]Rollout queue timeout[/red]")
+                    continue
+
+                data = response.payload
+                completion = data.get("completion", "")
+
+                # Run verifier
+                wdir = ensure_dir(self.project_root / "runs" / ".temp" / task.id / f"rollout_{k:02d}")
+                (wdir / "main.py").write_text(completion, encoding="utf-8")
+
+                tests_dir = ensure_dir(wdir / "tests")
+                (tests_dir / "test_task.py").write_text(task.tests, encoding="utf-8")
+
+                t0 = time.time()
+                if self.cfg.rlm.verifier_backend == "docker":
+                    res = docker_verify(
+                        task.prompt,
+                        completion,
+                        str(wdir),
+                        timeout_s=int(self.cfg.rlm.verifier_timeout_s),
+                        image=self.cfg.rlm.docker_image,
+                        memory_mb=int(self.cfg.rlm.docker_memory_mb),
+                        cpus=float(self.cfg.rlm.docker_cpus),
+                        pids=int(self.cfg.rlm.docker_pids),
+                    )
+                else:
+                    from ..verifiers.pytest_verifier import verify as pytest_verify
+                    res = pytest_verify(
+                        task.prompt,
+                        completion,
+                        str(wdir),
+                        timeout_s=int(self.cfg.rlm.verifier_timeout_s),
+                    )
+                latency_ms = (time.time() - t0) * 1000.0
+
+                passed = bool(getattr(res, "passed", False))
+                reward = float(getattr(res, "reward", 0.0))
+
+                rollouts.append(
+                    Rollout(
+                        task_id=task.id,
+                        prompt=task.prompt,
+                        completion=completion,
+                        token_ids=data.get("token_ids", []),
+                        prompt_len=data.get("prompt_len", 0),
+                        logprobs=data.get("logprobs"),
+                        passed=passed,
+                        reward=reward,
+                        verifier_latency_ms=latency_ms,
+                        weight_adapter=self._pointer_store.load("inference", self._base_model).adapter_path,
+                    )
+                )
+
+                if passed:
+                    self._passed_samples.append(
+                        {
+                            "id": task.id,
+                            "prompt": task.prompt,
+                            "response": completion,
+                            "reward": reward,
+                            "ts": now_ts(),
+                        }
+                    )
+
+            except Exception as e:
+                console.print(f"[red]Rollout error: {e}[/red]")
+                continue
+
+        return rollouts
     
-    def _send_training_batch(self, rollouts: List[Rollout], iteration: int, run_id: str) -> None:
-        """Send a training batch to the trainer worker via API."""
-        # For now, we do synchronous training via the main loop
-        # In a full async implementation, this would queue to the trainer process
-        pass
+    def _send_training_batch(self, rollouts: List[Rollout], iteration: int, run_id: str) -> Message:
+        """Send a training batch to the trainer worker via queue."""
+        save_checkpoint = True
+
+        payload = {
+            "iteration": iteration,
+            "run_id": run_id,
+            "save_checkpoint": save_checkpoint,
+            "rollouts": [
+                {
+                    "task_id": r.task_id,
+                    "prompt": r.prompt,
+                    "completion": r.completion,
+                    "token_ids": r.token_ids,
+                    "prompt_len": r.prompt_len,
+                    "logprobs": r.logprobs,
+                    "passed": r.passed,
+                    "reward": r.reward,
+                    "verifier_latency_ms": r.verifier_latency_ms,
+                    "weight_adapter": r.weight_adapter,
+                }
+                for r in rollouts
+            ],
+        }
+        return self.queue.send("train_batches", MessageType.TRAIN_BATCH, payload, source="orchestrator")
+
+    def _drain_queue(self, queue_name: str) -> None:
+        """Drain all pending messages from a queue."""
+        while True:
+            msg = self.queue.receive(queue_name, timeout=0)
+            if msg is None:
+                break
     
     def run_iteration(self, iteration: int) -> bool:
         """Run a single orchestrated RLM iteration."""
@@ -683,7 +810,7 @@ class RLMOrchestrator:
         console.print("  [dim]Generating tasks...[/dim]")
         
         llm = get_llm_backend(self.cfg.model.backend)
-        pointer = self._pointer_store.load("inference", "")
+        pointer = self._pointer_store.load("inference", self._base_model)
         llm.load(
             pointer.base_model,
             max_seq_len=self.cfg.model.max_seq_len,
@@ -708,11 +835,11 @@ class RLMOrchestrator:
         
         write_jsonl(run.run_dir / "tasks.jsonl", [task.__dict__ for task in tasks])
         
-        # Generate rollouts via inference API
+        # Generate rollouts via inference queue
         console.print(f"  [dim]Generating {len(tasks) * self.cfg.rlm.rollouts_per_task} rollouts...[/dim]")
         all_rollouts = []
         for i, task in enumerate(tasks):
-            rollouts = self._generate_rollout_via_api(
+            rollouts = self._generate_rollout_via_queue(
                 task,
                 rollouts_per_task=int(self.cfg.rlm.rollouts_per_task),
             )
@@ -735,68 +862,50 @@ class RLMOrchestrator:
             for r in all_rollouts
         ])
         
-        # Train via trainer worker API (for now, direct training)
+        # Train via trainer worker (queue)
         console.print("  [dim]Training on rollouts...[/dim]")
-        
-        trainer_llm = get_llm_backend(self.cfg.model.backend)
-        trainer_pointer = self._pointer_store.load("trainer", "")
-        trainer_llm.load(
-            trainer_pointer.base_model,
-            max_seq_len=self.cfg.model.max_seq_len,
-            dtype=self.cfg.model.dtype,
-            trust_remote_code=self.cfg.model.trust_remote_code,
+        train_msg = self._send_training_batch(all_rollouts, iteration, run.run_dir.name)
+
+        train_resp = None
+        start = time.time()
+        while time.time() - start < self._train_timeout_s:
+            msg = self.queue.receive("train_complete", timeout=1.0)
+            if not msg:
+                continue
+            if msg.payload.get("request_id") == train_msg.msg_id:
+                train_resp = msg
+                break
+
+        if train_resp is None:
+            console.print("[red]Trainer timed out[/red]")
+            return False
+
+        train_result = train_resp.payload.get("result") or {}
+        checkpoint_path = train_resp.payload.get("checkpoint_path")
+
+        write_jsonl(
+            run.metrics_path,
+            [
+                {
+                    "ts": now_ts(),
+                    "kind": "rlm_train",
+                    "iteration": iteration,
+                    "loss": train_result.get("loss"),
+                    "num_tasks": train_result.get("num_tasks"),
+                    "num_rollouts": train_result.get("num_rollouts"),
+                }
+            ],
         )
-        
-        if trainer_pointer.adapter_path:
-            trainer_llm.apply_adapter(trainer_pointer.adapter_path)
-        else:
-            lora_cfg = LoRAConfig(
-                r=self.cfg.lora.r,
-                alpha=self.cfg.lora.alpha,
-                dropout=self.cfg.lora.dropout,
-                target_modules=list(self.cfg.lora.target_modules or []),
-                num_layers=self.cfg.lora.num_layers,
-                scale=self.cfg.lora.scale,
-                fine_tune_type=self.cfg.lora.fine_tune_type,
-            )
-            trainer_llm.apply_lora_from_config(lora_cfg)
-        
-        opt, _ = trainer_llm.optimizer_and_params(lr=self.cfg.train.lr, weight_decay=self.cfg.train.weight_decay)
-        
-        ref_llm = None
-        if self.cfg.rft.reference_model:
-            ref_llm = get_llm_backend(self.cfg.model.backend)
-            ref_llm.load(
-                self.cfg.rft.reference_model,
-                max_seq_len=self.cfg.model.max_seq_len,
-                dtype=self.cfg.model.dtype,
-                trust_remote_code=self.cfg.model.trust_remote_code,
-            )
-        
-        metrics_rows = train_on_rollouts(
-            trainer_llm,
-            all_rollouts,
-            self.cfg,
-            optimizer=opt,
-            train_adapter=trainer_pointer.adapter_path,
-            ref_llm=ref_llm,
-        )
-        
-        for row in metrics_rows:
-            row["iteration"] = iteration
-        write_jsonl(run.metrics_path, metrics_rows)
-        
-        # Save adapter
-        trainer_llm.save_adapter(
-            str(run.adapter_dir),
-            metadata={
-                "base_model": trainer_pointer.base_model,
-                "source_adapter": str(trainer_pointer.adapter_path) if trainer_pointer.adapter_path else None,
-                "run": run.run_dir.name,
-                "kind": "rlm",
-                "iteration": iteration,
-            },
-        )
+
+        if not checkpoint_path:
+            console.print("[red]Trainer returned no checkpoint[/red]")
+            return False
+
+        copytree(Path(checkpoint_path), run.adapter_dir)
+
+        # Drain any weight update notifications from trainer
+        self._drain_queue("weight_updates")
+        self._drain_queue("checkpoints")
         
         # Update corpus
         if self._passed_samples:
@@ -839,7 +948,7 @@ class RLMOrchestrator:
         # Update weight pointers
         if self.gating_state.current_adapter:
             train_pointer = WeightPointerIPC(
-                base_model=trainer_pointer.base_model,
+                base_model=self._base_model,
                 adapter_path=self.gating_state.current_adapter,
                 iteration=iteration,
                 updated_at=now_ts(),
@@ -850,9 +959,15 @@ class RLMOrchestrator:
             
             # Update inference pointer (hot reload)
             infer_staleness = int(getattr(self.cfg.rlm, "infer_staleness", 0))
-            if infer_staleness <= 0:
+            current_infer = self._pointer_store.load("inference", self._base_model)
+            update_infer = infer_staleness <= 0
+            if not update_infer:
+                lag = max(0, int(iteration) - int(current_infer.iteration))
+                update_infer = lag >= infer_staleness
+
+            if update_infer:
                 infer_pointer = WeightPointerIPC(
-                    base_model=trainer_pointer.base_model,
+                    base_model=self._base_model,
                     adapter_path=self.gating_state.current_adapter,
                     iteration=iteration,
                     updated_at=now_ts(),
@@ -860,13 +975,16 @@ class RLMOrchestrator:
                     name="inference",
                 )
                 self._pointer_store.save(infer_pointer)
-                
-                # Trigger hot reload via API
                 try:
-                    requests.post(
-                        f"http://localhost:{self.cfg.serve.port}/internal/adapter/reload",
-                        json={},
-                        timeout=10.0,
+                    self.queue.send(
+                        "weight_forward",
+                        MessageType.WEIGHT_UPDATE,
+                        {
+                            "adapter_path": self.gating_state.current_adapter,
+                            "version": iteration,
+                            "base_model": self._base_model,
+                        },
+                        source="orchestrator",
                     )
                 except Exception as e:
                     console.print(f"[yellow]Hot reload trigger failed: {e}[/yellow]")
@@ -917,6 +1035,7 @@ class RLMOrchestrator:
         
         # Start workers
         self._start_inference_worker()
+        self._start_trainer_worker()
         
         console.print("[dim]Waiting for inference server...[/dim]")
         if not self._wait_for_inference(timeout=120.0):
@@ -969,7 +1088,7 @@ def run_rlm_orchestrated(
     """Run multi-process orchestrated RLM loop.
     
     This mode spawns separate inference and trainer processes,
-    coordinating via weight pointers and API calls.
+    coordinating via weight pointers and queue messages.
     
     Benefits:
     - Inference server remains responsive during training
@@ -999,8 +1118,94 @@ def collect_rollouts_via_api(
     weight_adapter: Optional[str],
 ) -> tuple[List[Rollout], list[dict]]:
     """Collect rollouts via inference API (for legacy loop with external inference)."""
+    try:
+        import requests
+    except ModuleNotFoundError:
+        requests = None
     rollouts: List[Rollout] = []
     passed_samples: list[dict] = []
+
+    if requests is None:
+        llm = get_llm_backend(cfg.model.backend)
+        llm.load(
+            cfg.model.id,
+            max_seq_len=cfg.model.max_seq_len,
+            dtype=cfg.model.dtype,
+            trust_remote_code=cfg.model.trust_remote_code,
+        )
+        if weight_adapter:
+            llm.apply_adapter(weight_adapter)
+        for task in tasks:
+            for k in range(int(cfg.rlm.rollouts_per_task)):
+                try:
+                    gen = llm.generate_with_logprobs(
+                        task.prompt,
+                        max_new_tokens=int(cfg.rft.max_new_tokens),
+                        temperature=float(cfg.rft.temperature),
+                        top_p=float(cfg.infer.top_p),
+                        top_k=cfg.infer.top_k,
+                        seed=int(time.time() * 1000) % (2**31 - 1),
+                    )
+                except TypeError:
+                    gen = llm.generate_with_logprobs(
+                        task.prompt,
+                        max_new_tokens=int(cfg.rft.max_new_tokens),
+                        temperature=float(cfg.rft.temperature),
+                        top_p=float(cfg.infer.top_p),
+                        top_k_sampling=cfg.infer.top_k,
+                        seed=int(time.time() * 1000) % (2**31 - 1),
+                    )
+                completion = gen.text[len(task.prompt) :] if gen.text.startswith(task.prompt) else gen.text
+                wdir = ensure_dir(artifacts_dir / task.id / f"rollout_{k:02d}")
+                (wdir / "main.py").write_text(completion, encoding="utf-8")
+                (ensure_dir(wdir / "tests") / "test_task.py").write_text(task.tests, encoding="utf-8")
+                t0 = time.time()
+                if verifier_backend == "docker":
+                    res = docker_verify(
+                        task.prompt,
+                        completion,
+                        str(wdir),
+                        timeout_s=int(cfg.rlm.verifier_timeout_s),
+                        image=cfg.rlm.docker_image,
+                        memory_mb=int(cfg.rlm.docker_memory_mb),
+                        cpus=float(cfg.rlm.docker_cpus),
+                        pids=int(cfg.rlm.docker_pids),
+                    )
+                else:
+                    res = pytest_verify(
+                        task.prompt,
+                        completion,
+                        str(wdir),
+                        timeout_s=int(cfg.rlm.verifier_timeout_s),
+                    )
+                latency_ms = (time.time() - t0) * 1000.0
+                passed = bool(getattr(res, "passed", False))
+                reward = float(getattr(res, "reward", 0.0))
+                rollouts.append(
+                    Rollout(
+                        task_id=task.id,
+                        prompt=task.prompt,
+                        completion=completion,
+                        token_ids=list(gen.token_ids),
+                        prompt_len=gen.prompt_len,
+                        logprobs=list(gen.logprobs) if gen.logprobs else None,
+                        passed=passed,
+                        reward=reward,
+                        verifier_latency_ms=latency_ms,
+                        weight_adapter=weight_adapter,
+                    )
+                )
+                if passed:
+                    passed_samples.append(
+                        {
+                            "id": task.id,
+                            "prompt": task.prompt,
+                            "response": completion,
+                            "reward": reward,
+                            "ts": now_ts(),
+                        }
+                    )
+        return rollouts, passed_samples
     
     for task in tasks:
         for k in range(int(cfg.rlm.rollouts_per_task)):

@@ -201,7 +201,7 @@ class TestTrainingClient:
         assert isinstance(result, ForwardBackwardResult)
         assert result.loss is not None
         assert result.batch_size == 2
-        assert "batch_size" in result.metrics
+        assert "num_samples" in result.metrics
         
         client.shutdown()
     
@@ -728,6 +728,14 @@ def test_loss_registry_mock():
 
     is_loss = importance_sampling_loss(loaded.backend, ids, prompt_len=2, advantage=1.0, behavior_logprob=0.1)
     assert is_loss is not None
+    is_loss_list = importance_sampling_loss(
+        loaded.backend,
+        ids,
+        prompt_len=2,
+        advantage=1.0,
+        behavior_logprob=[0.05, 0.05],
+    )
+    assert is_loss_list == pytest.approx(-1.0)
 
 
 def test_sdk_future_pool_mock():

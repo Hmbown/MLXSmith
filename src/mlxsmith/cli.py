@@ -34,8 +34,11 @@ from .adapters import merge_adapters
 from .envs import (
     init_env as init_env_plugin,
     install_env as install_env_plugin,
+    list_registry_packages,
     package_env as package_env_plugin,
+    pull_env as pull_env_plugin,
     publish_env as publish_env_plugin,
+    registry_info as registry_info_plugin,
     resolve_env_path as resolve_env_path_plugin,
     load_manifest as load_env_manifest,
 )
@@ -564,10 +567,55 @@ def env_init(name: str = typer.Argument(..., help="Environment name")):
     console.print(f"[green]Initialized env[/green] {env_dir}")
 
 
-@env_app.command("install")
-def env_install(source: str = typer.Argument(..., help="Env dir, package path, or registry name")):
+@env_app.command("list")
+def env_list(
+    name: Optional[str] = typer.Argument(None, help="Filter by env name"),
+    all_versions: bool = typer.Option(False, "--all", help="Show all versions"),
+):
     root = project_root_from_cwd()
-    env_dir = install_env_plugin(root, source)
+    packages = list_registry_packages(root, name=name, all_versions=all_versions)
+    if not packages:
+        console.print("[yellow]No registry entries found[/yellow]")
+        return
+    table = Table(title="mlxsmith env registry")
+    table.add_column("name")
+    table.add_column("version")
+    table.add_column("description")
+    for pkg in packages:
+        table.add_row(
+            str(pkg.get("name") or ""),
+            str(pkg.get("version") or ""),
+            str(pkg.get("description") or ""),
+        )
+    console.print(table)
+
+
+@env_app.command("info")
+def env_info(
+    env: str = typer.Argument(..., help="Env name (optionally name@version or name==version)"),
+    version: Optional[str] = typer.Option(None, "--version", help="Pin to a specific version"),
+):
+    root = project_root_from_cwd()
+    pkg, manifest = registry_info_plugin(root, env, version=version)
+    table = Table(title=f"mlxsmith env info: {manifest.name}")
+    table.add_column("field")
+    table.add_column("value")
+    table.add_row("name", manifest.name)
+    table.add_row("version", manifest.version)
+    table.add_row("description", manifest.description or "n/a")
+    table.add_row("verifier", manifest.verifier or "n/a")
+    table.add_row("tasks", str(len(manifest.tasks or [])))
+    table.add_row("registry_path", str(pkg.get("path") or ""))
+    console.print(table)
+
+
+@env_app.command("install")
+def env_install(
+    source: str = typer.Argument(..., help="Env dir, package path, or registry name"),
+    version: Optional[str] = typer.Option(None, "--version", help="Pin to a specific version when using registry"),
+):
+    root = project_root_from_cwd()
+    env_dir = install_env_plugin(root, source, version=version)
     console.print(f"[green]Installed env[/green] {env_dir}")
 
 
@@ -586,6 +634,18 @@ def env_publish(package: str = typer.Argument(..., help="Path to .tar.gz package
     root = project_root_from_cwd()
     dest = publish_env_plugin(root, package)
     console.print(f"[green]Published env[/green] {dest}")
+
+
+@env_app.command("pull")
+def env_pull(
+    env: str = typer.Argument(..., help="Env name (optionally name@version or name==version)"),
+    out: Optional[str] = typer.Option(None, "--out", help="Output directory"),
+    version: Optional[str] = typer.Option(None, "--version", help="Pin to a specific version"),
+    force: bool = typer.Option(False, "--force", help="Overwrite destination if it exists"),
+):
+    root = project_root_from_cwd()
+    dest = pull_env_plugin(root, env, out_dir=out, version=version, force=force)
+    console.print(f"[green]Pulled env[/green] {dest}")
 
 
 @env_app.command("run")

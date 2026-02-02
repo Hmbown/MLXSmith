@@ -33,10 +33,24 @@ tasks:
 
 ## CLI workflow
 
-Initialize an environment:
+Initialize an environment (scaffolds `pyproject.toml` + package stub):
 
 ```
 mlxsmith env init myenv
+```
+
+List registry entries:
+
+```
+mlxsmith env list
+mlxsmith env list myenv --all
+```
+
+Inspect a registry entry:
+
+```
+mlxsmith env info myenv
+mlxsmith env info myenv --version 0.1.0
 ```
 
 Install from a directory or package:
@@ -46,11 +60,26 @@ mlxsmith env install path/to/envs/myenv
 mlxsmith env install path/to/myenv-0.1.0.tar.gz
 ```
 
+Install from registry (latest or pinned):
+
+```
+mlxsmith env install myenv
+mlxsmith env install myenv --version 0.1.0
+mlxsmith env install myenv@0.1.0
+```
+
 Package and publish to the local registry:
 
 ```
 mlxsmith env package myenv
 mlxsmith env publish envs/packages/myenv-0.1.0.tar.gz
+```
+
+Pull env source from the registry:
+
+```
+mlxsmith env pull myenv
+mlxsmith env pull myenv --version 0.1.0 --out ./myenv
 ```
 
 Run a packaged env (invokes `mlxsmith rft` under the hood):

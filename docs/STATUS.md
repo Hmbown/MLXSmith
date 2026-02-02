@@ -11,6 +11,7 @@ Date: 2026-02-02
 - Built-in verifiers: regex, jsonschema, pytest (sandboxed).
 - OpenAI-compatible `/v1/chat/completions` endpoint + optional streaming.
 - Run tracking: adapter artifacts, metrics, config snapshots, accepted rollouts.
+- Orchestrated RLM mode (queue-driven inference + trainer workers).
 - Tests + CI workflow added.
 
 ## Remaining limitations

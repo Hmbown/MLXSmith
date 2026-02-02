@@ -31,6 +31,7 @@ class TrainerConfig:
     """Configuration for trainer worker."""
     model_spec: str
     base_model: str
+    backend: str = "mlx-lm"
     max_seq_len: int = 8192
     dtype: str = "bf16"
     trust_remote_code: bool = False
@@ -94,7 +95,7 @@ class TrainerWorker:
     def _load_model(self) -> None:
         """Load the model and optimizer."""
         print("[TrainerWorker] Loading model...")
-        self._llm = get_llm_backend("mlx-lm")
+        self._llm = get_llm_backend(self.config.backend)
         
         # Load base model
         self._llm.load(
@@ -135,7 +136,7 @@ class TrainerWorker:
         # Load reference model if needed for KL
         if self.config.reference_model and self.config.kl_coeff > 0:
             print("[TrainerWorker] Loading reference model...")
-            self._ref_llm = get_llm_backend("mlx-lm")
+            self._ref_llm = get_llm_backend(self.config.backend)
             self._ref_llm.load(
                 self.config.reference_model,
                 max_seq_len=self.config.max_seq_len,

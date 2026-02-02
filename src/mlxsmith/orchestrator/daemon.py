@@ -126,6 +126,7 @@ class OrchestratorDaemon:
         """Spawn the inference worker process."""
         inf_config = InferenceConfig(
             model_spec=self.config.model_spec,
+            backend=self.project_cfg.model.backend,
             host=self.config.inference_host,
             port=self.config.inference_port,
             max_seq_len=self.project_cfg.model.max_seq_len,
@@ -139,7 +140,7 @@ class OrchestratorDaemon:
         # Create process
         process = mp.Process(
             target=run_inference_worker,
-            args=(inf_config, None),  # Queue passed separately
+            args=(inf_config, self.queue),
             name="inference_worker",
             daemon=False,
         )
@@ -166,6 +167,7 @@ class OrchestratorDaemon:
         trainer_config = TrainerConfig(
             model_spec=self.config.model_spec,
             base_model=base_model,
+            backend=self.project_cfg.model.backend,
             max_seq_len=self.project_cfg.model.max_seq_len,
             dtype=self.project_cfg.model.dtype,
             trust_remote_code=self.project_cfg.model.trust_remote_code,
@@ -186,7 +188,7 @@ class OrchestratorDaemon:
         # Create process
         process = mp.Process(
             target=run_trainer_worker,
-            args=(trainer_config, None),  # Queue passed separately
+            args=(trainer_config, self.queue),
             name="trainer_worker",
             daemon=False,
         )
