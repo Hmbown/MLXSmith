@@ -703,6 +703,20 @@ components:
           type: boolean
           default: true
           description: Include per-token logprobs
+        include_top_k_logprobs:
+          type: integer
+          minimum: 0
+          maximum: 20
+          description: Number of top logprobs per token to include
+        include_prompt_logprobs:
+          type: boolean
+          default: false
+          description: Include per-token logprobs for prompt tokens
+        include_prompt_top_k_logprobs:
+          type: integer
+          minimum: 0
+          maximum: 20
+          description: Number of top logprobs per prompt token to include
         include_text:
           type: boolean
           default: true
@@ -738,6 +752,21 @@ components:
           items:
             type: number
           description: Per-token log probabilities
+        top_k_logprobs:
+          type: array
+          items:
+            type: object
+          description: Top-k logprobs per token
+        prompt_logprobs:
+          type: array
+          items:
+            type: number
+          description: Per-token log probabilities for prompt tokens
+        prompt_top_k_logprobs:
+          type: array
+          items:
+            type: object
+          description: Top-k logprobs per prompt token
         completion:
           type: string
           description: Generated text

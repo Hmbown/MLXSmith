@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Iterable, Optional
 
 from ..config import ProjectConfig
-from ..util import now_ts
+from ..util import now_ts, latency_summary_ms
 from .inference import Rollout
 
 
@@ -53,16 +53,21 @@ def train_on_rollouts(
         if grads is not None:
             llm.apply_grads(optimizer, grads)
 
-        metrics_rows.append(
-            {
-                "ts": now_ts(),
-                "task_id": task_id,
-                "mean_reward": mean_r,
-                "std_reward": std_r,
-                "loss": float(lval.item()) if hasattr(lval, "item") else float(lval),
-                "verifier_latency_ms": sum(r.verifier_latency_ms for r in rows) / max(1, len(rows)),
-                "weight_adapter": rows[0].weight_adapter,
-            }
-        )
+        latency_summary = latency_summary_ms([float(r.verifier_latency_ms) for r in rows])
+        metrics = {
+            "ts": now_ts(),
+            "task_id": task_id,
+            "mean_reward": mean_r,
+            "std_reward": std_r,
+            "loss": float(lval.item()) if hasattr(lval, "item") else float(lval),
+            "verifier_latency_ms": latency_summary.get("mean", 0.0),
+            "verifier_latency_ms_mean": latency_summary.get("mean", 0.0),
+            "verifier_latency_ms_p50": latency_summary.get("p50", 0.0),
+            "verifier_latency_ms_p90": latency_summary.get("p90", 0.0),
+            "verifier_latency_ms_p99": latency_summary.get("p99", 0.0),
+            "verifier_latency_ms_max": latency_summary.get("max", 0.0),
+            "weight_adapter": rows[0].weight_adapter,
+        }
+        metrics_rows.append(metrics)
 
     return metrics_rows

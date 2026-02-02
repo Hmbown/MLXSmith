@@ -66,6 +66,9 @@ def build_tasks(
         min_desc_len=int(getattr(cfg.rlm, "min_task_desc_len", 10)),
         min_asserts=int(getattr(cfg.rlm, "min_task_asserts", 2)),
         max_prompt_len=int(getattr(cfg.rlm, "max_task_prompt_len", 2000)),
+        min_tests_len=int(getattr(cfg.rlm, "min_task_tests_len", 20)),
+        max_tests_len=int(getattr(cfg.rlm, "max_task_tests_len", 8000)),
+        blocked_patterns=getattr(cfg.rlm, "blocked_task_patterns", None),
     )
     return filtered or tasks
 

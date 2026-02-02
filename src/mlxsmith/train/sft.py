@@ -10,7 +10,7 @@ from ..accel import get_backend
 from ..config import ProjectConfig
 from ..models import resolve_model_spec
 from ..runs import RunPaths, new_run, snapshot_config
-from ..util import write_jsonl, now_ts, tree_add, tree_scale
+from ..util import write_jsonl, now_ts, tree_add, tree_scale, clip_grad_norm
 from ..llm.registry import get_llm_backend
 from ..llm.backend import BackendNotAvailable
 from .lora import LoRAConfig
@@ -84,6 +84,7 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
     total = int(cfg.train.iters)
     grad_accum = max(1, int(cfg.train.grad_accum))
     train_on_prompt = bool(getattr(cfg.train, "train_on_prompt", False))
+    max_grad_norm = float(getattr(cfg.train, "max_grad_norm", 1.0))
 
     rng = random.Random(cfg.train.seed)
     accum_grads = None
@@ -114,7 +115,10 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
 
         if step % grad_accum == 0:
             if accum_grads is not None:
-                llm.apply_grads(opt, tree_scale(accum_grads, 1.0 / grad_accum))
+                scaled = tree_scale(accum_grads, 1.0 / grad_accum)
+                if max_grad_norm > 0:
+                    scaled = clip_grad_norm(scaled, max_grad_norm)
+                llm.apply_grads(opt, scaled)
             accum_grads = None
             accum_loss = 0.0
 

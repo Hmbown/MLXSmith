@@ -21,6 +21,7 @@ class EnvManifest:
     description: Optional[str] = None
     verifier: Optional[str] = None
     tasks: Optional[list] = None
+    token_env: Optional[object] = None
 
 
 @dataclass
@@ -45,6 +46,7 @@ def load_manifest(env_path: Path) -> EnvManifest:
         description=data.get("description"),
         verifier=data.get("verifier"),
         tasks=data.get("tasks"),
+        token_env=data.get("token_env"),
     )
 
 
@@ -232,6 +234,7 @@ def _load_manifest_from_package(package_path: Path) -> EnvManifest:
                     description=data.get("description"),
                     verifier=data.get("verifier"),
                     tasks=data.get("tasks"),
+                    token_env=data.get("token_env"),
                 )
     raise RuntimeError("Package missing env.yaml")
 
@@ -266,7 +269,11 @@ def registry_info(project_root: Path, env_ref: str, version: Optional[str] = Non
     return pkg, manifest
 
 
-def install_env(project_root: Path, source: str, version: Optional[str] = None) -> Path:
+def install_env(
+    project_root: Path,
+    source: str,
+    version: Optional[str] = None,
+) -> Path:
     src = Path(source)
     ensure_dir(_envs_root(project_root))
     if src.exists():

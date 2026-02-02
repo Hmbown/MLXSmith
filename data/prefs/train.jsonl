@@ -1,0 +1,5 @@
+{"prompt":"Write a function to add two numbers.","chosen":"\ndef add(a, b):\n    return a + b\n","rejected":"\ndef add(a, b):\n    print(a + b)\n"}
+{"prompt":"Write a function to reverse a string.","chosen":"\ndef reverse(s):\n    return s[::-1]\n","rejected":"\ndef reverse(s):\n    result = ''\n    for i in range(len(s)-1, -1, -1):\n        result += s[i]\n    return result\n"}
+{"prompt":"Write a function to check if a number is even.","chosen":"\ndef is_even(n):\n    return n % 2 == 0\n","rejected":"\ndef is_even(n):\n    if n / 2 == int(n / 2):\n        return True\n    return False\n"}
+{"prompt":"Write a function to find the length of a list.","chosen":"\ndef length(lst):\n    return len(lst)\n","rejected":"\ndef length(lst):\n    count = 0\n    for _ in lst:\n        count = count + 1\n    return count\n"}
+{"prompt":"Write a function to sort a list.","chosen":"\ndef sort_list(lst):\n    return sorted(lst)\n","rejected":"\ndef sort_list(lst):\n    for i in range(len(lst)):\n        for j in range(len(lst) - 1):\n            if lst[j] > lst[j + 1]:\n                lst[j], lst[j + 1] = lst[j + 1], lst[j]\n    return lst\n"}

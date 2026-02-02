@@ -30,6 +30,7 @@ from .schemas import (
     AdapterReloadRequest,
     AdapterReloadResponse,
     ChatCompletionChunk,
+    ChatMessage,
     ChatRequest,
     ChatResponse,
     Choice,
@@ -432,7 +433,6 @@ def create_router(
                 )
                 choice.logprobs = ChoiceLogprobs(content=logprobs_content)
             
-            from .schemas import ChatMessage
             return ChatResponse(
                 id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
                 created=int(time.time()),
@@ -486,6 +486,26 @@ def create_router(
             )
             
             completion = gen.text[len(request.prompt):] if gen.text.startswith(request.prompt) else gen.text
+
+            prompt_logprobs: Optional[List[float]] = None
+            prompt_top_k: Optional[List[Dict[str, float]]] = None
+            include_prompt = bool(request.include_prompt_logprobs or request.include_prompt_top_k_logprobs)
+            if include_prompt and hasattr(llm_backend, "token_logprobs"):
+                prompt_ids = llm_backend.encode(request.prompt)
+                try:
+                    logps, topk = llm_backend.token_logprobs(
+                        prompt_ids,
+                        prompt_len=len(prompt_ids),
+                        top_k=int(request.include_prompt_top_k_logprobs or 0),
+                        include_prompt=True,
+                    )
+                    if request.include_prompt_logprobs:
+                        prompt_logprobs = list(logps)
+                    if request.include_prompt_top_k_logprobs:
+                        prompt_top_k = topk or []
+                except Exception:
+                    prompt_logprobs = None
+                    prompt_top_k = None
             
             return RolloutResponse(
                 id=f"rollout-{uuid.uuid4().hex[:12]}",
@@ -495,6 +515,8 @@ def create_router(
                 token_ids=list(gen.token_ids) if request.include_tokens else None,
                 logprobs=list(gen.logprobs) if (request.include_logprobs and gen.logprobs is not None) else None,
                 top_k_logprobs=gen.top_k_logprobs if request.include_top_k_logprobs else None,
+                prompt_logprobs=prompt_logprobs,
+                prompt_top_k_logprobs=prompt_top_k,
                 completion=completion if request.include_text else None,
             )
         except Exception as e:

@@ -92,6 +92,23 @@ class LLMBackend(Protocol):
     def sequence_logprob(self, token_ids: Sequence[int], *, prompt_len: int) -> Any:
         """Return log-probability sum of response tokens (differentiable)."""
 
+    def token_logprobs(
+        self,
+        token_ids: Sequence[int],
+        *,
+        prompt_len: int,
+        top_k: int = 0,
+        include_prompt: bool = False,
+    ) -> tuple[list[float], List[Dict[str, float]] | None]:
+        """Return per-token logprobs (and optional top-k logprobs).
+
+        Args:
+            token_ids: Full token sequence (prompt + completion).
+            prompt_len: Prompt length in tokens.
+            top_k: Number of top logprobs per token to return (0 = none).
+            include_prompt: If True, include prompt tokens; otherwise only response tokens.
+        """
+
     def value_and_grad(self, loss_fn) -> tuple[Any, Any | None]:
         """Return (loss, grads) using backend autograd when available."""
 

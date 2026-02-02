@@ -64,3 +64,43 @@ def verify(prompt, completion, workdir, **kwargs):
     )
 
     run_rft(tmp_path, cfg, env, verifier, run.adapter_dir, "none")
+
+    # Token-level env (custom) smoke
+    token_env_py = tmp_path / "envs" / "token_env.py"
+    token_env_py.write_text(
+        """
+from mlxsmith.envs.token_env import TokenEnvStep
+
+
+class Env:
+    def __init__(self, max_steps=2, **kwargs):
+        self.max_steps = max_steps
+        self.steps = 0
+        self.obs = [1, 2]
+
+    def initial_observation(self):
+        self.steps = 0
+        self.obs = [1, 2]
+        return list(self.obs)
+
+    def step(self, action: int):
+        self.steps += 1
+        self.obs.append(int(action))
+        done = self.steps >= self.max_steps
+        reward = 1.0 if done else 0.0
+        return TokenEnvStep(observation=list(self.obs), reward=reward, done=done, info={\"passed\": done})
+""",
+        encoding="utf-8",
+    )
+    token_env_yaml = tmp_path / "envs" / "token_env.yaml"
+    token_env_yaml.write_text(
+        """
+name: token-env
+token_env:
+  path: envs/token_env.py
+  class: Env
+""",
+        encoding="utf-8",
+    )
+
+    run_rft(tmp_path, cfg, token_env_yaml, verifier, run.adapter_dir, "none")

@@ -25,6 +25,13 @@ cache/
 logs/
 models/
 runs/
+docs/ROADMAP_LOCAL.md
+docs/prompt-cli-full-qa.md
+analysis_prompt.md
+
+# Local run configs (contain machine-specific paths)
+mlxsmith.yaml
+qwen3.yaml
 
 # OS
 .DS_Store

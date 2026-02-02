@@ -170,6 +170,33 @@ class MockBackend:
     def sequence_logprob(self, token_ids: Sequence[int], *, prompt_len: int) -> Any:
         return 0.1
 
+    def token_logprobs(
+        self,
+        token_ids: Sequence[int],
+        *,
+        prompt_len: int,
+        top_k: int = 0,
+        include_prompt: bool = False,
+    ) -> tuple[List[float], List[Dict[str, float]] | None]:
+        if len(token_ids) < 2:
+            return [], [] if top_k > 0 else None
+        start = 0 if include_prompt else max(0, prompt_len - 1)
+        count = max(0, len(token_ids) - 1 - start)
+        logprobs = [random.uniform(-3.0, -0.1) for _ in range(count)]
+        if top_k <= 0:
+            return logprobs, None
+        top_k_list: List[Dict[str, float]] = []
+        for _ in range(count):
+            token_dict: Dict[str, float] = {}
+            for j in range(min(top_k, 10)):
+                token_id = random.randint(0, 255)
+                token_str = self.decode([token_id])
+                if token_str in token_dict:
+                    token_str = f"{token_str}_{j}"
+                token_dict[token_str] = random.uniform(-4.0, -0.1)
+            top_k_list.append(token_dict)
+        return logprobs, top_k_list
+
     def value_and_grad(self, loss_fn):
         return loss_fn(self.model), None
 

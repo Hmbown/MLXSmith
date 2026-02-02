@@ -19,3 +19,4 @@
 ## QA prompts
 - `docs/prompt-cli-qa.md` — multi‑agent CLI QA prompt.
 - `docs/prompt-hf-oauth-qa.md` — HF auth + model pull QA prompt.
+- `docs/prompt-cli-full-qa.md` — full real‑model training QA (Qwen3‑4B).

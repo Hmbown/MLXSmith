@@ -32,6 +32,8 @@ from mlxsmith.api.schemas import (
 
 # Handlers
 from mlxsmith.api.handlers import create_router, InternalAuthMiddleware
+from mlxsmith.config import ProjectConfig
+from mlxsmith.llm.mock_backend import MockBackend
 
 
 class TestSchemas:
@@ -212,6 +214,37 @@ class TestHandlers:
         assert "base_model" in params
         assert "current_adapter" in params
         assert "cfg" in params
+
+    def test_rollout_prompt_logprobs_smoke(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        backend = MockBackend()
+        backend.load("dummy/model")
+        cfg = ProjectConfig()
+
+        app = FastAPI()
+        app.include_router(create_router(backend, base_model="dummy/model", current_adapter=None, cfg=cfg))
+        client = TestClient(app)
+
+        resp = client.post(
+            "/internal/rollout",
+            json={
+                "prompt": "hello world",
+                "max_tokens": 4,
+                "include_tokens": True,
+                "include_logprobs": True,
+                "include_prompt_logprobs": True,
+                "include_prompt_top_k_logprobs": 2,
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("prompt_logprobs") is not None
+        assert data.get("prompt_top_k_logprobs") is not None
+        prompt_len = int(data.get("prompt_len") or 0)
+        assert len(data["prompt_logprobs"]) == max(prompt_len - 1, 0)
+        assert len(data["prompt_top_k_logprobs"]) == len(data["prompt_logprobs"])
 
 
 class TestMiddleware:

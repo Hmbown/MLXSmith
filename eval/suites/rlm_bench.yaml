@@ -1,0 +1,11 @@
+name: rlm-bench
+tasks:
+  - id: bench_add
+    prompt: |
+      Write a Python function `add(a, b)` that returns the sum of two numbers.
+    tests: |
+      from main import add
+
+      def test_add():
+          assert add(1, 2) == 3
+          assert add(-1, 1) == 0

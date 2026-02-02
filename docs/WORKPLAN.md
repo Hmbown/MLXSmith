@@ -14,7 +14,7 @@ PrimeIntellect/Tinker parity and to ship both a web app + a SwiftUI macOS app.
 
 ### Implemented (core parity)
 - RLM loop: generate → rollout → verify → train → eval → gate (`src/mlxsmith/rlm/*`).
-- Task mutation + basic similarity filtering (`rlm/mutate.py`, `rlm/generate.py`).
+- Task mutation + quality filtering (similarity, length, blocklist) (`rlm/mutate.py`, `rlm/generate.py`).
 - Verifier backends: regex/jsonschema/pytest + Docker sandbox (`verifiers/*`).
 - Verifier composition + latency logging (`verifiers/compose.py`).
 - Loss registry: cross_entropy, DPO/ORPO + RL losses (IS/PPO/CISPO/DRO).
@@ -66,7 +66,7 @@ logprobs top‑k for distillation.
 **Status:** ✅ Implemented (teacher logprobs + reverse‑KL advantages + IS loss).
 
 #### F) Token‑level RL environments
-**Gap:** Tinker RL envs operate on tokens (initial_observation/step).
+**Status:** ✅ Implemented (token_env interface + tasks shim in RFT).
 
 **Do:**
 - Add an optional token‑level env interface for RL tasks.

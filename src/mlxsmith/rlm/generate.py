@@ -39,6 +39,20 @@ _FALLBACK_TASKS = [
     },
 ]
 
+_DEFAULT_BLOCKLIST = [
+    r"\bsubprocess\b",
+    r"\bos\.system\b",
+    r"\bshutil\.rmtree\b",
+    r"\brm\s+-rf\b",
+    r"\brequests\b",
+    r"\burllib\b",
+    r"\bsocket\b",
+    r"\bhttp[s]?://",
+    r"\bpip\s+install\b",
+    r"\bapt-get\b",
+    r"\bbrew\s+install\b",
+]
+
 
 def extract_json_objects(text: str) -> List[dict]:
     # Try fenced json blocks first.
@@ -91,6 +105,10 @@ def task_to_tests(task: dict) -> str:
     if isinstance(tests, str):
         return tests
     if isinstance(tests, list):
+        # List of pre-formatted test strings (e.g. from Qwen3-style generation)
+        if tests and isinstance(tests[0], str):
+            return "\n\n".join(tests).strip() + "\n"
+        # List of structured {input, expected} dicts
         return _tests_from_cases(tests)
     # fallback: trivial test that always fails to avoid false positives
     return "def test_placeholder():\n    assert False\n"
@@ -117,12 +135,16 @@ def filter_tasks(
     min_desc_len: int = 10,
     min_asserts: int = 2,
     max_prompt_len: int = 2000,
+    min_tests_len: int = 20,
+    max_tests_len: int = 8000,
+    blocked_patterns: Optional[Sequence[str]] = None,
 ) -> List[GeneratedTask]:
     """Filter tasks by basic quality + similarity + dedup."""
     existing_prompts = existing_prompts or []
     existing_tokens = [_token_set(p) for p in existing_prompts if p]
     seen_hashes: Set[str] = set()
     filtered: List[GeneratedTask] = []
+    patterns = list(blocked_patterns) if blocked_patterns else _DEFAULT_BLOCKLIST
 
     for task in tasks:
         prompt = task.prompt or ""
@@ -131,6 +153,17 @@ def filter_tasks(
         desc = task.description or prompt
         if len(desc.strip()) < min_desc_len:
             continue
+        tests = task.tests or ""
+        if len(tests.strip()) < min_tests_len or len(tests) > max_tests_len:
+            continue
+        if patterns:
+            blocked = False
+            for pattern in patterns:
+                if re.search(pattern, prompt, flags=re.IGNORECASE) or re.search(pattern, tests, flags=re.IGNORECASE):
+                    blocked = True
+                    break
+            if blocked:
+                continue
         asserts = sum(1 for line in task.tests.splitlines() if line.strip().startswith("assert"))
         if asserts < min_asserts:
             continue

@@ -1,29 +1,41 @@
 # mlxsmith
 
-A **self-hostable** CLI + API for fine-tuning and verifier-driven RL on **Apple Silicon** using **MLX**, with optional acceleration backends.
+Apple Silicon MLX fine-tuning and OpenAI-compatible serving.
+SFT + serving are stable. Preference/RL/RLM features are experimental.
 
-Features:
+Status: alpha (2026-02-02).
 
-- **SFT (LoRA/QLoRA)** training with run tracking + artifacts.
-- **Preference tuning** (DPO / ORPO) with optional KL penalty.
-- **Verifier-driven RL (GRPO-style)** with per-rollout sandboxing + metrics.
-- **OpenAI-compatible** `/v1/chat/completions` API + optional streaming.
-- **HF → MLX conversion** via `mlx_lm.convert`.
+## Stable features
+- Project init, config, data tools, HF auth, model pull/convert.
+- SFT (LoRA/QLoRA) training with run tracking and adapters.
+- Inference and OpenAI-compatible /v1/chat/completions serving.
+- Basic eval/bench and verifier plumbing (regex/jsonschema/pytest).
 
-> Designed to be compatible with the MLX + mlx-lm ecosystem as of **Jan 2026**.
+## Experimental features
+- Preference tuning (DPO/ORPO).
+- GRPO-style RFT.
+- RLM self-play loop (research).
+- Distill/OPD and orchestrated RLM.
 
-## Quickstart
+## Install
+
+MLX is only available on Apple Silicon. Other platforms can still use data tools
+and mock backends, but MLX training and serving require macOS on Apple Silicon.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -U pip
 
-# CLI (dev) + serving deps
-pip install -e ".[dev,serve]"
+# Core CLI
+pip install mlxsmith
 
-# MLX + model tooling (on Apple Silicon)
-pip install -e ".[mlx,llm]"
+# Apple Silicon training + serving
+pip install "mlxsmith[mlx,llm,serve]"
+```
 
+## Quickstart
+
+```bash
 mlxsmith init myproj
 cd myproj
 mlxsmith doctor
@@ -37,7 +49,7 @@ mlxsmith auth status
 mlxsmith auth logout
 ```
 
-## Pull + convert a model (HF → MLX)
+## Pull + convert a model (HF -> MLX)
 
 ```bash
 mlxsmith pull Qwen/Qwen3-4B-Instruct-2507
@@ -50,53 +62,19 @@ Optional quantization:
 mlxsmith pull Qwen/Qwen3-4B-Instruct-2507 --quantize --q-bits 4
 ```
 
-## SFT (LoRA)
+## SFT (LoRA/QLoRA)
 
 ```bash
 mlxsmith sft --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 --data data/sft
 ```
 
-## Preference tuning (DPO / ORPO)
-
-```bash
-mlxsmith pref --model runs/sft_0001/adapter --data data/prefs
-```
-
-## Verifier-driven RL (GRPO-style)
-
-```bash
-mlxsmith rft --model runs/sft_0001/adapter --env envs/coding.yaml --verifier verifiers/regex.py --rollouts 4
-```
-
-## Distillation (offline / OPD)
-
-```bash
-mlxsmith distill --data data/distill/prompts.jsonl --teacher cache/mlx/TEACHER --student cache/mlx/STUDENT --mode offline
-mlxsmith distill --data data/distill/prompts.jsonl --teacher cache/mlx/TEACHER --student cache/mlx/STUDENT --mode opd
-```
-
-## Eval
-
-```bash
-mlxsmith eval --model runs/rft_0001/adapter --suite eval/suites/coding.yaml
-```
-
 ## Serve (OpenAI-compatible)
 
 ```bash
-mlxsmith serve --model runs/rft_0001/adapter --port 8080
+mlxsmith serve --model runs/sft_0001/adapter --port 8080
 ```
 
-To enable the optional UI/monitor dashboard, set `serve.ui: true` in `mlxsmith.yaml`.
-
-## Environments
-
-```bash
-mlxsmith env init myenv
-mlxsmith env run myenv --model runs/sft_0001/adapter
-```
-
-### Sample request
+Sample request:
 
 ```bash
 curl http://localhost:8080/v1/chat/completions \
@@ -104,37 +82,24 @@ curl http://localhost:8080/v1/chat/completions \
   -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":64}'
 ```
 
-## Project layout
+To enable the optional UI/monitor dashboard, set `serve.ui: true` in `mlxsmith.yaml`.
 
-See `docs/PROJECT_FORMAT.md` for full details.
+## Experimental commands
 
-## Verifiers
+- `mlxsmith pref` (DPO/ORPO)
+- `mlxsmith rft` (GRPO-style)
+- `mlxsmith rlm` / `mlxsmith pipeline` (self-play loop)
+- `mlxsmith distill` (offline/OPD)
+- `mlxsmith eval` / `mlxsmith bench`
 
-See `docs/VERIFIERS.md` for the verifier API and sandbox behavior.
+## Docs
 
-## Compatibility
-
-See `docs/COMPATIBILITY.md` for tested versions and model families.
-
-## Environments
-
-See `docs/ENVIRONMENTS.md` for the environment plugin system.
-
-## Roadmap
-
-See `docs/ROADMAP.md` for the latest product direction and milestones.
-
-## Docs index
-
-See `docs/README.md` for a full documentation index.
-
-## Workplan
-
-See `docs/WORKPLAN.md` for parity gaps, app plans, and handoff checklists.
-
-## Prime Intellect Design Notes
-
-See `docs/prime-intellect-design-notes.md` for alignment notes and deltas.
+- `docs/PROJECT_FORMAT.md` for project layout and artifacts.
+- `docs/VERIFIERS.md` for verifier API and sandbox behavior.
+- `docs/COMPATIBILITY.md` for tested versions and model families.
+- `docs/ENVIRONMENTS.md` for the environment plugin system.
+- `docs/ROADMAP.md` for product direction and milestones.
+- `docs/README.md` for the full docs index.
 
 ## License
 

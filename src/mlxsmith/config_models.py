@@ -52,7 +52,8 @@ class TrainConfig(BaseModel):
     eval_every: int = 100
     log_every: int = 10
     train_on_prompt: bool = False
-    
+    max_grad_norm: float = 1.0
+
     @field_validator("lr", "weight_decay")
     @classmethod
     def validate_positive(cls, v: float) -> float:
@@ -206,6 +207,23 @@ class RlmConfig(BaseModel):
     min_task_desc_len: int = 10
     min_task_asserts: int = 2
     max_task_prompt_len: int = 2000
+    min_task_tests_len: int = 20
+    max_task_tests_len: int = 8000
+    blocked_task_patterns: List[str] = Field(
+        default_factory=lambda: [
+            r"\bsubprocess\b",
+            r"\bos\.system\b",
+            r"\bshutil\.rmtree\b",
+            r"\brm\s+-rf\b",
+            r"\brequests\b",
+            r"\burllib\b",
+            r"\bsocket\b",
+            r"\bhttp[s]?://",
+            r"\bpip\s+install\b",
+            r"\bapt-get\b",
+            r"\bbrew\s+install\b",
+        ]
+    )
     
     @field_validator("mix_old_ratio", "hard_ratio", "gating_ema_alpha", "similarity_threshold")
     @classmethod

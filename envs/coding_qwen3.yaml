@@ -1,0 +1,187 @@
+name: qwen3-coding
+tasks:
+- id: sum_nested
+  prompt: 'Sum all integers in a nested list using recursion.
+
+    Signature: sum_nested(xs: list) -> int
+
+    Return only Python code.'
+  tests: "from main import sum_nested\n\n\ndef test_case_0():\n    assert sum_nested([1,\
+    \ 2, 3]) == 6\n\ndef test_case_1():\n    assert sum_nested([1, [2, 3], 4]) ==\
+    \ 10\n\ndef test_case_2():\n    assert sum_nested([-1, [2, [-3, 4]]]) == 2\n"
+- id: flatten
+  prompt: 'Flatten a nested list into a single list using recursion.
+
+    Signature: flatten(xs: list) -> list
+
+    Return only Python code.'
+  tests: "from main import flatten\n\n\ndef test_case_0():\n    assert flatten([1,\
+    \ [2, 3], 4]) == [1, 2, 3, 4]\n\ndef test_case_1():\n    assert flatten([[1],\
+    \ [2, [3]]]) == [1, 2, 3]\n\ndef test_case_2():\n    assert flatten([[]]) == []\n"
+- id: max_depth
+  prompt: 'Return the maximum nesting depth of a list using recursion.
+
+    Signature: max_depth(xs: list) -> int
+
+    Return only Python code.'
+  tests: "from main import max_depth\n\n\ndef test_case_0():\n    assert max_depth([1,\
+    \ 2, 3]) == 1\n\ndef test_case_1():\n    assert max_depth([1, [2, [3]]]) == 3\n\
+    \ndef test_case_2():\n    assert max_depth([[]]) == 2\n"
+- id: count_paths
+  prompt: 'Count unique paths in an m x n grid moving only right or down using recursion
+    with memoization.
+
+    Signature: count_paths(m: int, n: int) -> int
+
+    Return only Python code.'
+  tests: "from main import count_paths\n\n\ndef test_case_0():\n    assert count_paths(1,\
+    \ 1) == 1\n\ndef test_case_1():\n    assert count_paths(2, 2) == 2\n\ndef test_case_2():\n\
+    \    assert count_paths(3, 3) == 6\n"
+- id: is_palindrome
+  prompt: 'Check if a string is a palindrome using recursion.
+
+    Signature: is_palindrome(s: str) -> bool
+
+    Return only Python code.'
+  tests: "from main import is_palindrome\n\n\ndef test_case_0():\n    assert is_palindrome('racecar')\
+    \ == True\n\ndef test_case_1():\n    assert is_palindrome('level') == True\n\n\
+    def test_case_2():\n    assert is_palindrome('palindrome') == False\n"
+- id: fibonacci
+  prompt: 'Return the nth Fibonacci number using recursion (0-indexed: fib(0)=0, fib(1)=1).
+
+    Signature: fibonacci(n: int) -> int
+
+    Return only Python code.'
+  tests: "from main import fibonacci\n\n\ndef test_case_0():\n    assert fibonacci(0)\
+    \ == 0\n\ndef test_case_1():\n    assert fibonacci(1) == 1\n\ndef test_case_2():\n\
+    \    assert fibonacci(10) == 55\n"
+- id: power
+  prompt: 'Compute base raised to exp using recursion (exp >= 0).
+
+    Signature: power(base: int, exp: int) -> int
+
+    Return only Python code.'
+  tests: "from main import power\n\n\ndef test_case_0():\n    assert power(2, 0) ==\
+    \ 1\n\ndef test_case_1():\n    assert power(2, 10) == 1024\n\ndef test_case_2():\n\
+    \    assert power(3, 3) == 27\n"
+- id: reverse_string
+  prompt: 'Reverse a string using recursion.
+
+    Signature: reverse_string(s: str) -> str
+
+    Return only Python code.'
+  tests: "from main import reverse_string\n\n\ndef test_case_0():\n    assert reverse_string('hello')\
+    \ == 'olleh'\n\ndef test_case_1():\n    assert reverse_string('') == ''\n\ndef\
+    \ test_case_2():\n    assert reverse_string('a') == 'a'\n"
+- id: gcd
+  prompt: 'Compute the greatest common divisor of two positive integers using the
+    Euclidean algorithm (recursion).
+
+    Signature: gcd(a: int, b: int) -> int
+
+    Return only Python code.'
+  tests: "from main import gcd\n\n\ndef test_case_0():\n    assert gcd(12, 8) == 4\n\
+    \ndef test_case_1():\n    assert gcd(17, 5) == 1\n\ndef test_case_2():\n    assert\
+    \ gcd(100, 25) == 25\n"
+- id: count_occurrences
+  prompt: 'Count the number of times a target value appears in a nested list using
+    recursion.
+
+    Signature: count_occurrences(xs: list, target) -> int
+
+    Return only Python code.'
+  tests: "from main import count_occurrences\n\n\ndef test_case_0():\n    assert count_occurrences([1,\
+    \ [2, 1, [1, 3]]], 1) == 3\n\ndef test_case_1():\n    assert count_occurrences([1,\
+    \ 2, 3], 4) == 0\n\ndef test_case_2():\n    assert count_occurrences([[['a'],\
+    \ 'a'], 'b'], 'a') == 2\n"
+- id: word_freq
+  prompt: 'Return a dict mapping words to counts (lowercased).
+
+    Signature: word_freq(text: str) -> dict
+
+    Return only Python code.'
+  tests: "from main import word_freq\n\n\ndef test_case_0():\n    assert word_freq('hi\
+    \ hi there') == {'hi': 2, 'there': 1}\n\ndef test_case_1():\n    assert word_freq('')\
+    \ == {}\n"
+- id: pair_sum
+  prompt: 'Return True if any two numbers sum to target.
+
+    Signature: pair_sum(nums: list[int], target: int) -> bool
+
+    Return only Python code.'
+  tests: "from main import pair_sum\n\n\ndef test_case_0():\n    assert pair_sum([1,\
+    \ 2, 3], 5) == True\n\ndef test_case_1():\n    assert pair_sum([1, 2, 3], 7) ==\
+    \ False\n"
+- id: run_length
+  prompt: 'Run-length encode a string as list of (char, count).
+
+    Signature: run_length(s: str) -> list[tuple[str,int]]
+
+    Return only Python code.'
+  tests: "from main import run_length\n\n\ndef test_case_0():\n    assert run_length('aaabb')\
+    \ == [['a', 3], ['b', 2]]\n\ndef test_case_1():\n    assert run_length('') ==\
+    \ []\n"
+- id: balanced_parens
+  prompt: 'Return True if parentheses are balanced.
+
+    Signature: balanced_parens(s: str) -> bool
+
+    Return only Python code.'
+  tests: "from main import balanced_parens\n\n\ndef test_case_0():\n    assert balanced_parens('(())')\
+    \ == True\n\ndef test_case_1():\n    assert balanced_parens('(()') == False\n"
+- id: unique_order
+  prompt: 'Return list of items in order, removing duplicates.
+
+    Signature: unique_order(items: list) -> list
+
+    Return only Python code.'
+  tests: "from main import unique_order\n\n\ndef test_case_0():\n    assert unique_order([1,\
+    \ 2, 1, 3]) == [1, 2, 3]\n\ndef test_case_1():\n    assert unique_order(['a',\
+    \ 'a', 'b']) == ['a', 'b']\n"
+- id: matrix_transpose
+  prompt: 'Transpose a 2D matrix (list of lists).
+
+    Signature: matrix_transpose(matrix: list[list]) -> list[list]
+
+    Return only Python code.'
+  tests: "from main import matrix_transpose\n\n\ndef test_case_0():\n    assert matrix_transpose([[1,\
+    \ 2], [3, 4]]) == [[1, 3], [2, 4]]\n\ndef test_case_1():\n    assert matrix_transpose([[1,\
+    \ 2, 3]]) == [[1], [2], [3]]\n"
+- id: merge_sorted
+  prompt: 'Merge two sorted lists into one sorted list.
+
+    Signature: merge_sorted(a: list[int], b: list[int]) -> list[int]
+
+    Return only Python code.'
+  tests: "from main import merge_sorted\n\n\ndef test_case_0():\n    assert merge_sorted([1,\
+    \ 3, 5], [2, 4, 6]) == [1, 2, 3, 4, 5, 6]\n\ndef test_case_1():\n    assert merge_sorted([],\
+    \ [1, 2]) == [1, 2]\n"
+- id: rotate_list
+  prompt: 'Rotate a list to the right by k positions.
+
+    Signature: rotate_list(xs: list, k: int) -> list
+
+    Return only Python code.'
+  tests: "from main import rotate_list\n\n\ndef test_case_0():\n    assert rotate_list([1,\
+    \ 2, 3, 4, 5], 2) == [4, 5, 1, 2, 3]\n\ndef test_case_1():\n    assert rotate_list([1,\
+    \ 2, 3], 0) == [1, 2, 3]\n\ndef test_case_2():\n    assert rotate_list([], 5)\
+    \ == []\n"
+- id: is_sorted
+  prompt: 'Return True if the list is sorted in non-decreasing order.
+
+    Signature: is_sorted(xs: list) -> bool
+
+    Return only Python code.'
+  tests: "from main import is_sorted\n\n\ndef test_case_0():\n    assert is_sorted([1,\
+    \ 2, 3, 4]) == True\n\ndef test_case_1():\n    assert is_sorted([3, 1, 2]) ==\
+    \ False\n\ndef test_case_2():\n    assert is_sorted([]) == True\n"
+- id: caesar_cipher
+  prompt: 'Apply a Caesar cipher shift to lowercase letters in a string, wrapping
+    around z to a. Non-lowercase characters are unchanged.
+
+    Signature: caesar_cipher(text: str, shift: int) -> str
+
+    Return only Python code.'
+  tests: "from main import caesar_cipher\n\n\ndef test_case_0():\n    assert caesar_cipher('abc',\
+    \ 1) == 'bcd'\n\ndef test_case_1():\n    assert caesar_cipher('xyz', 3) == 'abc'\n\
+    \ndef test_case_2():\n    assert caesar_cipher('hello', 0) == 'hello'\n"

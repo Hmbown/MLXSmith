@@ -166,6 +166,15 @@ class RolloutRequest(BaseModel):
     include_top_k_logprobs: Optional[int] = Field(
         None, description="Number of top logprobs per token to include", ge=0, le=20
     )
+    include_prompt_logprobs: bool = Field(
+        False, description="Include per-token logprobs for prompt tokens"
+    )
+    include_prompt_top_k_logprobs: Optional[int] = Field(
+        None,
+        description="Number of top logprobs per prompt token to include",
+        ge=0,
+        le=20,
+    )
     include_text: bool = Field(True, description="Include generated text")
 
 
@@ -179,6 +188,13 @@ class RolloutResponse(BaseModel):
     logprobs: Optional[List[float]] = Field(None, description="Per-token log probabilities")
     top_k_logprobs: Optional[List[Dict[str, float]]] = Field(
         None, description="Top-k logprobs per token"
+    )
+    prompt_logprobs: Optional[List[float]] = Field(
+        None,
+        description="Per-token log probabilities for prompt tokens (excluding first token)",
+    )
+    prompt_top_k_logprobs: Optional[List[Dict[str, float]]] = Field(
+        None, description="Top-k logprobs per prompt token"
     )
     completion: Optional[str] = Field(None, description="Generated text (if requested)")
 

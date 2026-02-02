@@ -120,3 +120,55 @@ def tree_add(a, b):
 
 def tree_scale(tree, scale: float):
     return tree_map(lambda x: x * scale, tree)
+
+
+def tree_leaves(tree) -> list:
+    leaves = []
+    if tree is None:
+        return leaves
+    if isinstance(tree, dict):
+        for v in tree.values():
+            leaves.extend(tree_leaves(v))
+    elif isinstance(tree, (list, tuple)):
+        for v in tree:
+            leaves.extend(tree_leaves(v))
+    else:
+        leaves.append(tree)
+    return leaves
+
+
+def clip_grad_norm(grads, max_norm: float):
+    """Clip gradients by global L2 norm. Returns clipped grads."""
+    import mlx.core as mx
+
+    leaves = tree_leaves(grads)
+    if not leaves:
+        return grads
+    total_norm_sq = mx.array(0.0)
+    for g in leaves:
+        total_norm_sq = total_norm_sq + (g * g).sum()
+    total_norm = mx.sqrt(total_norm_sq)
+    clip_coef = mx.minimum(mx.array(max_norm) / mx.maximum(total_norm, mx.array(1e-8)), mx.array(1.0))
+    return tree_map(lambda g: g * clip_coef, grads)
+
+
+def latency_summary_ms(samples: list[float]) -> dict[str, float]:
+    if not samples:
+        return {}
+    items = sorted(samples)
+    n = len(items)
+    mean = sum(items) / n
+
+    def _pct(p: float) -> float:
+        if n == 1:
+            return items[0]
+        idx = int((p / 100.0) * (n - 1))
+        return items[max(0, min(idx, n - 1))]
+
+    return {
+        "mean": mean,
+        "p50": _pct(50),
+        "p90": _pct(90),
+        "p99": _pct(99),
+        "max": items[-1],
+    }

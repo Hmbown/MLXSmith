@@ -1,0 +1,11 @@
+name: rlm-holdout
+tasks:
+  - id: holdout_max
+    prompt: |
+      Write a Python function `find_max(lst)` that returns the maximum value in a list.
+    tests: |
+      from main import find_max
+
+      def test_max():
+          assert find_max([1, 2, 3]) == 3
+          assert find_max([-5, -1, -3]) == -1

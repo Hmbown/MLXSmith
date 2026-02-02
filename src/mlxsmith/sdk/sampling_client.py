@@ -51,6 +51,8 @@ class SampleResult:
     prompt_len: int
     logprobs: List[float] = field(default_factory=list)
     top_k_logprobs: Optional[List[Dict[str, float]]] = None
+    prompt_logprobs: Optional[List[float]] = None
+    prompt_top_k_logprobs: Optional[List[Dict[str, float]]] = None
     finish_reason: str = "stop"
     metrics: Dict[str, float] = field(default_factory=dict)
     
@@ -161,6 +163,8 @@ class SamplingClient:
         seed: Optional[int] = None,
         stop: Optional[Sequence[str]] = None,
         logprobs_k: int = 0,
+        include_prompt_logprobs: bool = False,
+        prompt_logprobs_k: int = 0,
     ) -> SampleResult:
         """Sample a single completion.
         
@@ -189,11 +193,29 @@ class SamplingClient:
         """
         if self.api_endpoint:
             return self._sample_api(
-                prompt, max_tokens, temperature, top_p, top_k, seed, stop, logprobs_k
+                prompt,
+                max_tokens,
+                temperature,
+                top_p,
+                top_k,
+                seed,
+                stop,
+                logprobs_k,
+                include_prompt_logprobs,
+                prompt_logprobs_k,
             )
         else:
             return self._sample_local(
-                prompt, max_tokens, temperature, top_p, top_k, seed, stop, logprobs_k
+                prompt,
+                max_tokens,
+                temperature,
+                top_p,
+                top_k,
+                seed,
+                stop,
+                logprobs_k,
+                include_prompt_logprobs,
+                prompt_logprobs_k,
             )
     
     def sample_async(
@@ -206,6 +228,8 @@ class SamplingClient:
         seed: Optional[int] = None,
         stop: Optional[Sequence[str]] = None,
         logprobs_k: int = 0,
+        include_prompt_logprobs: bool = False,
+        prompt_logprobs_k: int = 0,
     ) -> APIFuture[SampleResult]:
         """Async version of sample().
         
@@ -219,7 +243,16 @@ class SamplingClient:
         """
         def _do_sample():
             return self.sample(
-                prompt, max_tokens, temperature, top_p, top_k, seed, stop, logprobs_k
+                prompt,
+                max_tokens,
+                temperature,
+                top_p,
+                top_k,
+                seed,
+                stop,
+                logprobs_k,
+                include_prompt_logprobs,
+                prompt_logprobs_k,
             )
         
         return self.pool.submit(_do_sample)
@@ -234,6 +267,8 @@ class SamplingClient:
         seed: Optional[int] = None,
         stop: Optional[Sequence[str]] = None,
         logprobs_k: int = 0,
+        include_prompt_logprobs: bool = False,
+        prompt_logprobs_k: int = 0,
         max_workers: Optional[int] = None,
     ) -> SampleBatchResult:
         """Sample completions for multiple prompts.
@@ -272,6 +307,8 @@ class SamplingClient:
                 seed=s,
                 stop=stop,
                 logprobs_k=logprobs_k,
+                include_prompt_logprobs=include_prompt_logprobs,
+                prompt_logprobs_k=prompt_logprobs_k,
             )
             for p, s in zip(prompts, seeds)
         ]
@@ -292,6 +329,8 @@ class SamplingClient:
         seed: Optional[int] = None,
         stop: Optional[Sequence[str]] = None,
         logprobs_k: int = 0,
+        include_prompt_logprobs: bool = False,
+        prompt_logprobs_k: int = 0,
     ) -> APIFuture[SampleBatchResult]:
         """Async version of sample_batch().
         
@@ -300,7 +339,16 @@ class SamplingClient:
         """
         def _do_batch():
             return self.sample_batch(
-                prompts, max_tokens, temperature, top_p, top_k, seed, stop, logprobs_k
+                prompts,
+                max_tokens,
+                temperature,
+                top_p,
+                top_k,
+                seed,
+                stop,
+                logprobs_k,
+                include_prompt_logprobs,
+                prompt_logprobs_k,
             )
         
         return self.pool.submit(_do_batch)
@@ -348,6 +396,54 @@ class SamplingClient:
                 results.append([])
         
         return results
+
+    def get_prompt_token_logprobs(
+        self,
+        prompts: Sequence[str],
+    ) -> List[List[float]]:
+        """Get per-token logprobs for prompt tokens.
+
+        Returns a list of logprob lists (one per prompt). The first token is
+        omitted because it has no previous context.
+        """
+        results: List[List[float]] = []
+        for prompt in prompts:
+            if not hasattr(self.backend, "token_logprobs"):
+                results.append([])
+                continue
+            prompt_ids = self.backend.encode(prompt)
+            logprobs, _ = self.backend.token_logprobs(
+                prompt_ids,
+                prompt_len=len(prompt_ids),
+                top_k=0,
+                include_prompt=True,
+            )
+            results.append(logprobs)
+        return results
+
+    def get_prompt_top_k_logprobs(
+        self,
+        prompts: Sequence[str],
+        top_k: int = 5,
+    ) -> List[List[Dict[str, float]]]:
+        """Get top-k logprobs for each prompt token.
+
+        Returns a list of per-token top-k dicts for each prompt.
+        """
+        results: List[List[Dict[str, float]]] = []
+        for prompt in prompts:
+            if not hasattr(self.backend, "token_logprobs"):
+                results.append([])
+                continue
+            prompt_ids = self.backend.encode(prompt)
+            _, top_k_logprobs = self.backend.token_logprobs(
+                prompt_ids,
+                prompt_len=len(prompt_ids),
+                top_k=top_k,
+                include_prompt=True,
+            )
+            results.append(top_k_logprobs or [])
+        return results
     
     def compute_sequence_logprobs(
         self,
@@ -390,6 +486,8 @@ class SamplingClient:
         seed: Optional[int],
         stop: Optional[Sequence[str]],
         logprobs_k: int,
+        include_prompt_logprobs: bool,
+        prompt_logprobs_k: int,
     ) -> SampleResult:
         """Sample using local backend."""
         if logprobs_k > 0:
@@ -430,12 +528,33 @@ class SamplingClient:
         if len(gen.token_ids) - gen.prompt_len >= max_tokens:
             finish_reason = "length"
         
+        prompt_logprobs = None
+        prompt_top_k_logprobs = None
+        if (include_prompt_logprobs or prompt_logprobs_k > 0) and hasattr(self.backend, "token_logprobs"):
+            prompt_ids = self.backend.encode(prompt)
+            try:
+                plogps, ptopk = self.backend.token_logprobs(
+                    prompt_ids,
+                    prompt_len=len(prompt_ids),
+                    top_k=prompt_logprobs_k if prompt_logprobs_k > 0 else 0,
+                    include_prompt=True,
+                )
+                if include_prompt_logprobs:
+                    prompt_logprobs = plogps
+                if prompt_logprobs_k > 0:
+                    prompt_top_k_logprobs = ptopk or []
+            except Exception:
+                prompt_logprobs = None
+                prompt_top_k_logprobs = None
+
         return SampleResult(
             text=completion_text,
             token_ids=gen.token_ids,
             prompt_len=gen.prompt_len,
             logprobs=gen.logprobs or [],
             top_k_logprobs=gen.top_k_logprobs,
+            prompt_logprobs=prompt_logprobs,
+            prompt_top_k_logprobs=prompt_top_k_logprobs,
             finish_reason=finish_reason,
         )
     
@@ -449,6 +568,8 @@ class SamplingClient:
         seed: Optional[int],
         stop: Optional[Sequence[str]],
         logprobs_k: int,
+        include_prompt_logprobs: bool,
+        prompt_logprobs_k: int,
     ) -> SampleResult:
         """Sample using remote API endpoint."""
         import urllib.request
@@ -466,6 +587,9 @@ class SamplingClient:
             "seed": seed,
             "include_tokens": True,
             "include_logprobs": True,
+            "include_top_k_logprobs": logprobs_k if logprobs_k > 0 else None,
+            "include_prompt_logprobs": bool(include_prompt_logprobs),
+            "include_prompt_top_k_logprobs": prompt_logprobs_k if prompt_logprobs_k > 0 else None,
             "include_text": True,
         }
         
@@ -490,6 +614,8 @@ class SamplingClient:
                     prompt_len=data.get("prompt_len", 0),
                     logprobs=data.get("logprobs", []),
                     top_k_logprobs=data.get("top_k_logprobs"),
+                    prompt_logprobs=data.get("prompt_logprobs"),
+                    prompt_top_k_logprobs=data.get("prompt_top_k_logprobs"),
                     finish_reason="stop",
                 )
         except urllib.error.HTTPError as e:

@@ -31,6 +31,26 @@ tasks:
           assert add(2, 3) == 5
 ```
 
+### Token-level RL environments (optional)
+
+You can provide a token-level env that implements `initial_observation()` and
+`step(token_id)` for RL-style tasks:
+
+```yaml
+token_env:
+  path: envs/myenv/token_env.py
+  class: MyTokenEnv
+  kwargs:
+    max_steps: 128
+```
+
+`token_env` also supports a tasks shim if you want to run token-level rollouts
+against string-based tasks:
+
+```yaml
+token_env: tasks
+```
+
 ## CLI workflow
 
 Initialize an environment (scaffolds `pyproject.toml` + package stub):

@@ -1,0 +1,93 @@
+name: qwen3-holdout
+tasks:
+- id: word_freq
+  prompt: 'Return a dict mapping words to counts (lowercased).
+
+    Signature: word_freq(text: str) -> dict
+
+    Return only Python code.'
+  tests: "from main import word_freq\n\n\ndef test_case_0():\n    assert word_freq('hi\
+    \ hi there') == {'hi': 2, 'there': 1}\n\ndef test_case_1():\n    assert word_freq('')\
+    \ == {}\n"
+- id: pair_sum
+  prompt: 'Return True if any two numbers sum to target.
+
+    Signature: pair_sum(nums: list[int], target: int) -> bool
+
+    Return only Python code.'
+  tests: "from main import pair_sum\n\n\ndef test_case_0():\n    assert pair_sum([1,\
+    \ 2, 3], 5) == True\n\ndef test_case_1():\n    assert pair_sum([1, 2, 3], 7) ==\
+    \ False\n"
+- id: run_length
+  prompt: 'Run-length encode a string as list of (char, count).
+
+    Signature: run_length(s: str) -> list[tuple[str,int]]
+
+    Return only Python code.'
+  tests: "from main import run_length\n\n\ndef test_case_0():\n    assert run_length('aaabb')\
+    \ == [['a', 3], ['b', 2]]\n\ndef test_case_1():\n    assert run_length('') ==\
+    \ []\n"
+- id: balanced_parens
+  prompt: 'Return True if parentheses are balanced.
+
+    Signature: balanced_parens(s: str) -> bool
+
+    Return only Python code.'
+  tests: "from main import balanced_parens\n\n\ndef test_case_0():\n    assert balanced_parens('(())')\
+    \ == True\n\ndef test_case_1():\n    assert balanced_parens('(()') == False\n"
+- id: unique_order
+  prompt: 'Return list of items in order, removing duplicates.
+
+    Signature: unique_order(items: list) -> list
+
+    Return only Python code.'
+  tests: "from main import unique_order\n\n\ndef test_case_0():\n    assert unique_order([1,\
+    \ 2, 1, 3]) == [1, 2, 3]\n\ndef test_case_1():\n    assert unique_order(['a',\
+    \ 'a', 'b']) == ['a', 'b']\n"
+- id: matrix_transpose
+  prompt: 'Transpose a 2D matrix (list of lists).
+
+    Signature: matrix_transpose(matrix: list[list]) -> list[list]
+
+    Return only Python code.'
+  tests: "from main import matrix_transpose\n\n\ndef test_case_0():\n    assert matrix_transpose([[1,\
+    \ 2], [3, 4]]) == [[1, 3], [2, 4]]\n\ndef test_case_1():\n    assert matrix_transpose([[1,\
+    \ 2, 3]]) == [[1], [2], [3]]\n"
+- id: merge_sorted
+  prompt: 'Merge two sorted lists into one sorted list.
+
+    Signature: merge_sorted(a: list[int], b: list[int]) -> list[int]
+
+    Return only Python code.'
+  tests: "from main import merge_sorted\n\n\ndef test_case_0():\n    assert merge_sorted([1,\
+    \ 3, 5], [2, 4, 6]) == [1, 2, 3, 4, 5, 6]\n\ndef test_case_1():\n    assert merge_sorted([],\
+    \ [1, 2]) == [1, 2]\n"
+- id: rotate_list
+  prompt: 'Rotate a list to the right by k positions.
+
+    Signature: rotate_list(xs: list, k: int) -> list
+
+    Return only Python code.'
+  tests: "from main import rotate_list\n\n\ndef test_case_0():\n    assert rotate_list([1,\
+    \ 2, 3, 4, 5], 2) == [4, 5, 1, 2, 3]\n\ndef test_case_1():\n    assert rotate_list([1,\
+    \ 2, 3], 0) == [1, 2, 3]\n\ndef test_case_2():\n    assert rotate_list([], 5)\
+    \ == []\n"
+- id: is_sorted
+  prompt: 'Return True if the list is sorted in non-decreasing order.
+
+    Signature: is_sorted(xs: list) -> bool
+
+    Return only Python code.'
+  tests: "from main import is_sorted\n\n\ndef test_case_0():\n    assert is_sorted([1,\
+    \ 2, 3, 4]) == True\n\ndef test_case_1():\n    assert is_sorted([3, 1, 2]) ==\
+    \ False\n\ndef test_case_2():\n    assert is_sorted([]) == True\n"
+- id: caesar_cipher
+  prompt: 'Apply a Caesar cipher shift to lowercase letters in a string, wrapping
+    around z to a. Non-lowercase characters are unchanged.
+
+    Signature: caesar_cipher(text: str, shift: int) -> str
+
+    Return only Python code.'
+  tests: "from main import caesar_cipher\n\n\ndef test_case_0():\n    assert caesar_cipher('abc',\
+    \ 1) == 'bcd'\n\ndef test_case_1():\n    assert caesar_cipher('xyz', 3) == 'abc'\n\
+    \ndef test_case_2():\n    assert caesar_cipher('hello', 0) == 'hello'\n"

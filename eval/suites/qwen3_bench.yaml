@@ -1,0 +1,96 @@
+name: qwen3-bench
+tasks:
+- id: sum_nested
+  prompt: 'Sum all integers in a nested list using recursion.
+
+    Signature: sum_nested(xs: list) -> int
+
+    Return only Python code.'
+  tests: "from main import sum_nested\n\n\ndef test_case_0():\n    assert sum_nested([1,\
+    \ 2, 3]) == 6\n\ndef test_case_1():\n    assert sum_nested([1, [2, 3], 4]) ==\
+    \ 10\n\ndef test_case_2():\n    assert sum_nested([-1, [2, [-3, 4]]]) == 2\n"
+- id: flatten
+  prompt: 'Flatten a nested list into a single list using recursion.
+
+    Signature: flatten(xs: list) -> list
+
+    Return only Python code.'
+  tests: "from main import flatten\n\n\ndef test_case_0():\n    assert flatten([1,\
+    \ [2, 3], 4]) == [1, 2, 3, 4]\n\ndef test_case_1():\n    assert flatten([[1],\
+    \ [2, [3]]]) == [1, 2, 3]\n\ndef test_case_2():\n    assert flatten([[]]) == []\n"
+- id: max_depth
+  prompt: 'Return the maximum nesting depth of a list using recursion.
+
+    Signature: max_depth(xs: list) -> int
+
+    Return only Python code.'
+  tests: "from main import max_depth\n\n\ndef test_case_0():\n    assert max_depth([1,\
+    \ 2, 3]) == 1\n\ndef test_case_1():\n    assert max_depth([1, [2, [3]]]) == 3\n\
+    \ndef test_case_2():\n    assert max_depth([[]]) == 2\n"
+- id: count_paths
+  prompt: 'Count unique paths in an m x n grid moving only right or down using recursion
+    with memoization.
+
+    Signature: count_paths(m: int, n: int) -> int
+
+    Return only Python code.'
+  tests: "from main import count_paths\n\n\ndef test_case_0():\n    assert count_paths(1,\
+    \ 1) == 1\n\ndef test_case_1():\n    assert count_paths(2, 2) == 2\n\ndef test_case_2():\n\
+    \    assert count_paths(3, 3) == 6\n"
+- id: is_palindrome
+  prompt: 'Check if a string is a palindrome using recursion.
+
+    Signature: is_palindrome(s: str) -> bool
+
+    Return only Python code.'
+  tests: "from main import is_palindrome\n\n\ndef test_case_0():\n    assert is_palindrome('racecar')\
+    \ == True\n\ndef test_case_1():\n    assert is_palindrome('level') == True\n\n\
+    def test_case_2():\n    assert is_palindrome('palindrome') == False\n"
+- id: fibonacci
+  prompt: 'Return the nth Fibonacci number using recursion (0-indexed: fib(0)=0, fib(1)=1).
+
+    Signature: fibonacci(n: int) -> int
+
+    Return only Python code.'
+  tests: "from main import fibonacci\n\n\ndef test_case_0():\n    assert fibonacci(0)\
+    \ == 0\n\ndef test_case_1():\n    assert fibonacci(1) == 1\n\ndef test_case_2():\n\
+    \    assert fibonacci(10) == 55\n"
+- id: power
+  prompt: 'Compute base raised to exp using recursion (exp >= 0).
+
+    Signature: power(base: int, exp: int) -> int
+
+    Return only Python code.'
+  tests: "from main import power\n\n\ndef test_case_0():\n    assert power(2, 0) ==\
+    \ 1\n\ndef test_case_1():\n    assert power(2, 10) == 1024\n\ndef test_case_2():\n\
+    \    assert power(3, 3) == 27\n"
+- id: reverse_string
+  prompt: 'Reverse a string using recursion.
+
+    Signature: reverse_string(s: str) -> str
+
+    Return only Python code.'
+  tests: "from main import reverse_string\n\n\ndef test_case_0():\n    assert reverse_string('hello')\
+    \ == 'olleh'\n\ndef test_case_1():\n    assert reverse_string('') == ''\n\ndef\
+    \ test_case_2():\n    assert reverse_string('a') == 'a'\n"
+- id: gcd
+  prompt: 'Compute the greatest common divisor of two positive integers using the
+    Euclidean algorithm (recursion).
+
+    Signature: gcd(a: int, b: int) -> int
+
+    Return only Python code.'
+  tests: "from main import gcd\n\n\ndef test_case_0():\n    assert gcd(12, 8) == 4\n\
+    \ndef test_case_1():\n    assert gcd(17, 5) == 1\n\ndef test_case_2():\n    assert\
+    \ gcd(100, 25) == 25\n"
+- id: count_occurrences
+  prompt: 'Count the number of times a target value appears in a nested list using
+    recursion.
+
+    Signature: count_occurrences(xs: list, target) -> int
+
+    Return only Python code.'
+  tests: "from main import count_occurrences\n\n\ndef test_case_0():\n    assert count_occurrences([1,\
+    \ [2, 1, [1, 3]]], 1) == 3\n\ndef test_case_1():\n    assert count_occurrences([1,\
+    \ 2, 3], 4) == 0\n\ndef test_case_2():\n    assert count_occurrences([[['a'],\
+    \ 'a'], 'b'], 'a') == 2\n"

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Optional
@@ -18,7 +16,7 @@ from .config import (
     show_merged_config,
     write_default_config,
 )
-from .data import import_sharegpt, split_jsonl
+from .data import import_sharegpt, split_jsonl, pull_hf_dataset, list_presets, resolve_preset, analyze_jsonl
 from .models import hf_pull, quantize_stub
 from .util import detect_system, ensure_dir
 from .accel import get_backend
@@ -43,7 +41,10 @@ from .envs import (
     load_manifest as load_env_manifest,
 )
 
-app = typer.Typer(add_completion=False, help="mlxsmith — PrimeRL-style training CLI for MLX")
+app = typer.Typer(
+    add_completion=False,
+    help="mlxsmith — MLX fine-tuning + OpenAI-compatible serving (SFT stable; preference/RL experimental)",
+)
 console = Console()
 
 
@@ -165,6 +166,151 @@ def data_split(
     console.print(f"[green]Split[/green] -> {outd}  {stats}")
 
 
+@data_app.command("stats")
+def data_stats(
+    in_path: str = typer.Option(..., "--in"),
+    kind: Optional[str] = typer.Option(None, "--kind", help="sft | prefs (auto if omitted)"),
+    limit: Optional[int] = typer.Option(None, "--limit"),
+):
+    root = project_root_from_cwd()
+    inp = Path(in_path)
+    if not inp.is_absolute():
+        inp = root / inp
+    stats = analyze_jsonl(inp, kind=kind, limit=limit)
+    table = Table(title="mlxsmith data stats")
+    table.add_column("metric")
+    table.add_column("value")
+    table.add_row("kind", str(stats.get("kind")))
+    table.add_row("rows", str(stats.get("rows")))
+    table.add_row("empty_lines", str(stats.get("empty_lines")))
+    table.add_row("bad_json", str(stats.get("bad_json")))
+    table.add_row("missing_prompt", str(stats.get("missing_prompt")))
+    if stats.get("kind") == "prefs":
+        table.add_row("missing_chosen", str(stats.get("missing_chosen")))
+        table.add_row("missing_rejected", str(stats.get("missing_rejected")))
+        chosen_count = max(1, stats.get("chosen_count", 0))
+        rejected_count = max(1, stats.get("rejected_count", 0))
+        table.add_row("avg_prompt_chars", f"{stats.get('prompt_chars', 0) / max(1, stats.get('prompt_count', 0)):.1f}")
+        table.add_row("avg_chosen_chars", f"{stats.get('chosen_chars', 0) / chosen_count:.1f}")
+        table.add_row("avg_rejected_chars", f"{stats.get('rejected_chars', 0) / rejected_count:.1f}")
+    else:
+        table.add_row("missing_response", str(stats.get("missing_response")))
+        response_count = max(1, stats.get("response_count", 0))
+        table.add_row("avg_prompt_chars", f"{stats.get('prompt_chars', 0) / max(1, stats.get('prompt_count', 0)):.1f}")
+        table.add_row("avg_response_chars", f"{stats.get('response_chars', 0) / response_count:.1f}")
+    console.print(table)
+
+
+@data_app.command("validate")
+def data_validate(
+    in_path: str = typer.Option(..., "--in"),
+    kind: Optional[str] = typer.Option(None, "--kind", help="sft | prefs (auto if omitted)"),
+    limit: Optional[int] = typer.Option(None, "--limit"),
+    strict: bool = typer.Option(True, "--strict/--no-strict"),
+):
+    root = project_root_from_cwd()
+    inp = Path(in_path)
+    if not inp.is_absolute():
+        inp = root / inp
+    stats = analyze_jsonl(inp, kind=kind, limit=limit)
+    issues = []
+    if stats.get("bad_json", 0):
+        issues.append(f"bad_json={stats.get('bad_json')}")
+    if stats.get("missing_prompt", 0):
+        issues.append(f"missing_prompt={stats.get('missing_prompt')}")
+    if stats.get("kind") == "prefs":
+        if stats.get("missing_chosen", 0):
+            issues.append(f"missing_chosen={stats.get('missing_chosen')}")
+        if stats.get("missing_rejected", 0):
+            issues.append(f"missing_rejected={stats.get('missing_rejected')}")
+    else:
+        if stats.get("missing_response", 0):
+            issues.append(f"missing_response={stats.get('missing_response')}")
+    if issues:
+        console.print(f"[yellow]Issues:[/yellow] {', '.join(issues)}")
+        if strict:
+            raise typer.Exit(code=1)
+    console.print(f"[green]OK[/green] kind={stats.get('kind')} rows={stats.get('rows')}")
+
+
+@data_app.command("presets")
+def data_presets():
+    presets = list_presets()
+    if not presets:
+        console.print("[yellow]No presets defined[/yellow]")
+        return
+    table = Table(title="mlxsmith data presets")
+    table.add_column("name")
+    table.add_column("dataset")
+    table.add_column("kind")
+    table.add_column("split")
+    table.add_column("license")
+    for name, cfg in presets.items():
+        table.add_row(
+            name,
+            str(cfg.get("dataset", "")),
+            str(cfg.get("kind", "")),
+            str(cfg.get("split", "")),
+            str(cfg.get("license", "")),
+        )
+    console.print(table)
+
+
+@data_app.command("pull")
+def data_pull(
+    dataset: Optional[str] = typer.Option(None, "--dataset", help="HF dataset name"),
+    preset: Optional[str] = typer.Option(None, "--preset", help="Preset name"),
+    split: str = typer.Option("train", "--split"),
+    out_dir: str = typer.Option("data/sft", "--out-dir"),
+    kind: str = typer.Option("sft", "--kind", help="Dataset kind: sft or prefs"),
+    limit: Optional[int] = typer.Option(None, "--limit"),
+    prompt_field: Optional[str] = typer.Option(None, "--prompt-field"),
+    response_field: Optional[str] = typer.Option(None, "--response-field"),
+    chosen_field: Optional[str] = typer.Option(None, "--chosen-field"),
+    rejected_field: Optional[str] = typer.Option(None, "--rejected-field"),
+    config: Optional[str] = typer.Option(None, "--config"),
+    revision: Optional[str] = typer.Option(None, "--revision"),
+):
+    root = project_root_from_cwd()
+    outd = Path(out_dir)
+    if not outd.is_absolute():
+        outd = root / outd
+    license_name = None
+    notes = None
+    if preset:
+        preset_cfg = resolve_preset(preset)
+        dataset = dataset or preset_cfg.get("dataset")
+        kind = preset_cfg.get("kind", kind)
+        split = preset_cfg.get("split", split)
+        config = preset_cfg.get("config", config)
+        revision = preset_cfg.get("revision", revision)
+        prompt_field = prompt_field or preset_cfg.get("prompt_field")
+        response_field = response_field or preset_cfg.get("response_field")
+        chosen_field = chosen_field or preset_cfg.get("chosen_field")
+        rejected_field = rejected_field or preset_cfg.get("rejected_field")
+        license_name = preset_cfg.get("license")
+        notes = preset_cfg.get("notes")
+    if not dataset:
+        raise typer.BadParameter("Missing --dataset (or use --preset)")
+    stats = pull_hf_dataset(
+        dataset,
+        outd,
+        split=split,
+        limit=limit,
+        prompt_field=prompt_field,
+        response_field=response_field,
+        chosen_field=chosen_field,
+        rejected_field=rejected_field,
+        config=config,
+        revision=revision,
+        kind=kind,
+        license=license_name,
+        notes=notes,
+        preset=preset,
+    )
+    console.print(f"[green]Pulled[/green] {stats}")
+
+
 @app.command()
 def sft(
     config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
@@ -231,6 +377,41 @@ def rft(
 
 
 @app.command()
+def pipeline(
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
+    model: Optional[str] = typer.Option(None, "--model", help="Override model.id"),
+    data_sft: str = typer.Option("data/sft", "--data-sft"),
+    data_pref: str = typer.Option("data/prefs", "--data-pref"),
+    env: str = typer.Option("envs/coding.yaml", "--env"),
+    verifier: str = typer.Option("verifiers/regex.py", "--verifier"),
+    iterations: Optional[int] = typer.Option(None, "--iterations", help="Override rlm.iterations"),
+    resume: bool = typer.Option(False, "--resume"),
+    orchestrated: bool = typer.Option(False, "--orchestrated", help="Use multi-process orchestrator mode"),
+):
+    """Run SFT -> Pref -> RFT -> RLM in one command."""
+    root = project_root_from_cwd()
+    cfg = get_config(config_path=config, root=root, model_id=model, iterations=iterations)
+
+    # SFT
+    run_sft_out = run_sft(root, cfg, root / data_sft, cfg.model.id, cfg.accel.backend)
+    console.print(f"[bold]SFT[/bold] {run_sft_out.run_dir}")
+
+    # Pref (DPO/ORPO)
+    run_pref_out = run_pref(root, cfg, root / data_pref, run_sft_out.adapter_dir, cfg.accel.backend)
+    console.print(f"[bold]PREF[/bold] {run_pref_out.run_dir}")
+
+    # RFT (GRPO)
+    run_rft_out = run_rft(root, cfg, root / env, root / verifier, run_pref_out.adapter_dir, cfg.accel.backend)
+    console.print(f"[bold]RFT[/bold] {run_rft_out.run_dir}")
+
+    # RLM
+    if orchestrated:
+        run_rlm_orchestrated(root, cfg, model_spec=str(run_rft_out.adapter_dir), iterations=iterations, resume=resume)
+    else:
+        run_rlm(root, cfg, model_spec=str(run_rft_out.adapter_dir), iterations=iterations, resume=resume)
+
+
+@app.command()
 def distill(
     data: str = typer.Option(..., "--data", help="JSONL with prompts"),
     teacher: str = typer.Option(..., "--teacher"),
@@ -273,7 +454,7 @@ def serve(
     model: str = typer.Option(..., "--model"),
     host: Optional[str] = typer.Option(None, "--host", help="Override serve.host"),
     port: Optional[int] = typer.Option(None, "--port", help="Override serve.port"),
-    ui: Optional[bool] = typer.Option(None, "--ui/--no-ui", help="Override serve.ui"),
+    ui: Optional[bool] = typer.Option(None, "--ui", help="Override serve.ui (true/false)"),
 ):
     root = project_root_from_cwd()
     cfg = get_config(
@@ -443,7 +624,7 @@ app.add_typer(auth_app, name="auth")
 @auth_app.command("login")
 def auth_login(
     token: Optional[str] = typer.Option(None, "--token", envvar="HF_TOKEN"),
-    validate: bool = typer.Option(True, "--validate/--no-validate"),
+    validate: bool = typer.Option(True, "--validate", help="Validate token with HF API"),
 ):
     if not token:
         token = typer.prompt("Hugging Face token", hide_input=True)
@@ -458,7 +639,7 @@ def auth_login(
 
 
 @auth_app.command("status")
-def auth_status(validate: bool = typer.Option(False, "--validate/--no-validate")):
+def auth_status(validate: bool = typer.Option(False, "--validate", help="Validate token with HF API")):
     status = get_auth_status(validate=validate)
     if not status.token_present:
         console.print("[yellow]No token found[/yellow]")
@@ -605,6 +786,7 @@ def env_info(
     table.add_row("description", manifest.description or "n/a")
     table.add_row("verifier", manifest.verifier or "n/a")
     table.add_row("tasks", str(len(manifest.tasks or [])))
+    table.add_row("token_env", "yes" if manifest.token_env else "no")
     table.add_row("registry_path", str(pkg.get("path") or ""))
     console.print(table)
 
@@ -630,7 +812,9 @@ def env_package(
 
 
 @env_app.command("publish")
-def env_publish(package: str = typer.Argument(..., help="Path to .tar.gz package")):
+def env_publish(
+    package: str = typer.Argument(..., help="Path to .tar.gz package"),
+):
     root = project_root_from_cwd()
     dest = publish_env_plugin(root, package)
     console.print(f"[green]Published env[/green] {dest}")

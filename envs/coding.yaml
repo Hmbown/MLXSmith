@@ -1,0 +1,34 @@
+name: coding-rl
+tasks:
+  - id: add_function
+    prompt: |
+      Write a Python function `add(a, b)` that returns the sum of a and b.
+    tests: |
+      from main import add
+
+      def test_add_positive():
+          assert add(2, 3) == 5
+
+      def test_add_negative():
+          assert add(-1, 5) == 4
+
+      def test_add_zero():
+          assert add(0, 0) == 0
+    verifier_kwargs:
+      pattern: "def\\s+add\\("
+  - id: mul_function
+    prompt: |
+      Write a Python function `mul(a, b)` that returns the product of a and b.
+    tests: |
+      from main import mul
+
+      def test_mul_basic():
+          assert mul(2, 3) == 6
+
+      def test_mul_negative():
+          assert mul(-1, 5) == -5
+
+      def test_mul_zero():
+          assert mul(0, 99) == 0
+    verifier_kwargs:
+      pattern: "def\\s+mul\\("

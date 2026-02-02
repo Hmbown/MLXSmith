@@ -199,7 +199,7 @@ class MlxLMBackend:
         mx = self.mx
         
         # Get log softmax
-        log_probs = mx.log_softmax(logits, axis=-1)
+        log_probs = mx.log(mx.softmax(logits, axis=-1))
         
         # Get top-k indices and values
         # MLX doesn't have topk directly, so we use argsort
@@ -335,7 +335,7 @@ class MlxLMBackend:
             last = logits[:, -1, :]  # [batch=1, vocab_size]
             
             # Get log probabilities for this position
-            log_probs = mx.log_softmax(last, axis=-1)
+            log_probs = mx.log(mx.softmax(last, axis=-1))
             
             if temperature <= 0:
                 next_id = int(mx.argmax(last, axis=-1).item())
@@ -419,6 +419,45 @@ class MlxLMBackend:
         logp = chosen - lse
         start = max(0, prompt_len - 1)
         return logp[:, start:].sum()
+
+    def token_logprobs(
+        self,
+        token_ids: Sequence[int],
+        *,
+        prompt_len: int,
+        top_k: int = 0,
+        include_prompt: bool = False,
+    ) -> tuple[list[float], list[dict[str, float]] | None]:
+        assert self.mx is not None
+        mx = self.mx
+        ids = list(token_ids)
+        if len(ids) < 2:
+            return [], [] if top_k > 0 else None
+
+        logits = self._forward_logits(ids)
+        logits = logits[:, :-1, :]
+        labels = mx.array([ids[1:]], dtype=mx.int32)
+        lse = mx.logsumexp(logits, axis=-1)
+        chosen = mx.take_along_axis(logits, labels[..., None], axis=-1).squeeze(-1)
+        logp = chosen - lse
+
+        start = 0 if include_prompt else max(0, prompt_len - 1)
+        values = logp[:, start:]
+        try:
+            flat = values.flatten().tolist()
+        except Exception:
+            try:
+                flat = [float(v) for v in values.reshape(-1)]
+            except Exception:
+                flat = [float(v) for v in values]
+        logprobs = [float(v) for v in flat]
+
+        if top_k <= 0:
+            return logprobs, None
+
+        top_k_all = self._extract_top_k_logprobs(logits, k=int(top_k))
+        top_k_list = top_k_all[start:] if top_k_all else []
+        return logprobs, top_k_list
 
     def value_and_grad(self, loss_fn):
         if self.nn is None or self.model is None:

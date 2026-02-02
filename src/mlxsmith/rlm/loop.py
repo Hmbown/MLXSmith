@@ -1125,16 +1125,30 @@ def collect_rollouts_via_api(
     rollouts: List[Rollout] = []
     passed_samples: list[dict] = []
 
-    if requests is None:
+    # Probe the API endpoint; fall back to local inference if unreachable.
+    _api_available = False
+    if requests is not None:
+        try:
+            requests.get(api_url, timeout=2.0)
+            _api_available = True
+        except Exception:
+            _api_available = False
+
+    if not _api_available:
+        # Resolve model spec to separate base model from adapter.
+        base_model, resolved_adapter, _meta = resolve_model_spec(
+            Path.cwd(), cfg.model.id, cfg
+        )
         llm = get_llm_backend(cfg.model.backend)
         llm.load(
-            cfg.model.id,
+            base_model,
             max_seq_len=cfg.model.max_seq_len,
             dtype=cfg.model.dtype,
             trust_remote_code=cfg.model.trust_remote_code,
         )
-        if weight_adapter:
-            llm.apply_adapter(weight_adapter)
+        adapter_to_apply = weight_adapter or (str(resolved_adapter) if resolved_adapter else None)
+        if adapter_to_apply:
+            llm.apply_adapter(adapter_to_apply)
         for task in tasks:
             for k in range(int(cfg.rlm.rollouts_per_task)):
                 try:
