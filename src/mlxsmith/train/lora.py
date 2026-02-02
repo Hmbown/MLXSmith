@@ -160,6 +160,8 @@ def apply_lora(model: Any, cfg: LoRAConfig) -> dict:
         keys = sorted(_keys_for_target_modules(model, cfg.target_modules))
 
     if tuner_utils is not None and hasattr(tuner_utils, "linear_to_lora_layers"):
+        # Freeze all base weights first so only LoRA params are trainable
+        model.freeze()
         # MLX-LM format
         config = {
             "rank": int(cfg.r),
@@ -256,6 +258,8 @@ def apply_adapter(model: Any, adapter_dir: str | Path) -> dict | None:
     adapter_cfg = load_adapter_config(adapter_dir)
     tuner_utils, _ = _try_mlx_lm_utils()
     if adapter_cfg is not None and tuner_utils is not None and hasattr(tuner_utils, "load_adapters"):
+        # Freeze base weights so only adapter params are trainable
+        model.freeze()
         tuner_utils.load_adapters(model, str(adapter_dir))
         return adapter_cfg
 
