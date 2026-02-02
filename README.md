@@ -1,9 +1,8 @@
 # mlxsmith
 
-Apple Silicon MLX fine-tuning and OpenAI-compatible serving.
+Apple Silicon MLX fine-tuning toolkit — SFT, DPO/ORPO, GRPO, distillation, and OpenAI-compatible serving.
 
-**Status:** alpha (v0.1.0, 2026-02-02). SFT, data tooling, and serving are stable.
-Preference tuning, RFT, distillation, and RLM are available but experimental.
+**Status:** alpha (v0.1.0). Full training pipeline validated on Qwen3-4B.
 
 ## Install
 
@@ -32,49 +31,7 @@ cd myproj
 mlxsmith doctor        # check Python, MLX, Metal, ZMLX
 ```
 
-## Stable features
-
-### HF auth
-
-```bash
-mlxsmith auth login --token "$HF_TOKEN"
-mlxsmith auth status
-mlxsmith auth logout
-```
-
-### Pull + convert models (HF to MLX)
-
-```bash
-mlxsmith pull Qwen/Qwen3-4B-Instruct-2507
-# outputs to cache/mlx/Qwen__Qwen3-4B-Instruct-2507
-
-# With quantization
-mlxsmith pull Qwen/Qwen3-4B-Instruct-2507 --quantize --q-bits 4
-```
-
-### Data tools
-
-```bash
-# List available dataset presets
-mlxsmith data presets
-
-# Pull a preset dataset with field mapping
-mlxsmith data pull alpaca
-
-# Import ShareGPT format to JSONL
-mlxsmith data import raw.json --out data/sft/train.jsonl
-
-# Split into train/val/test
-mlxsmith data split data/sft/train.jsonl --fractions 0.9 0.05 0.05
-
-# Analyze a dataset
-mlxsmith data stats data/sft/train.jsonl
-
-# Validate structure
-mlxsmith data validate data/sft/train.jsonl
-```
-
-Built-in presets: `alpaca`, `hh-rlhf`, `ultrachat-200k`, `ultrafeedback-binarized-prefs`, `ultrafeedback-binarized-sft`.
+## Training
 
 ### SFT (LoRA/QLoRA)
 
@@ -83,66 +40,6 @@ mlxsmith sft --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 --data data/sft
 ```
 
 Produces run artifacts under `runs/sft_NNNN/` (adapter weights, `metrics.jsonl`, config snapshot).
-
-### Serve (OpenAI-compatible)
-
-```bash
-mlxsmith serve --model runs/sft_0001/adapter --port 8080
-```
-
-```bash
-curl http://localhost:8080/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":64}'
-```
-
-Supports streaming (`"stream": true`), logprobs, stop sequences, and an optional UI dashboard (`serve.ui: true` in config).
-
-### Eval and bench
-
-```bash
-# Run an evaluation suite (pass@k with verifier checks)
-mlxsmith eval --suite eval/suites/coding.yaml
-
-# Benchmark inference or training performance
-mlxsmith bench --mode inference
-mlxsmith bench --mode trainer
-mlxsmith bench --mode end_to_end
-```
-
-### Verifiers
-
-Built-in verifiers for evaluation, RFT, and preference tuning:
-
-- **regex** — pattern matching on completions
-- **jsonschema** — JSON structure validation
-- **pytest** — sandboxed test execution
-- **docker** — containerized verification
-- **compose** — multi-verifier composition (AND/OR/weighted)
-
-See `docs/VERIFIERS.md` for the verifier API.
-
-### Config system
-
-```bash
-mlxsmith config show              # display merged config (YAML/JSON/TOML)
-mlxsmith config show --sources    # show where each value comes from
-mlxsmith config init              # create default mlxsmith.yaml
-mlxsmith config validate          # check config structure
-mlxsmith config env               # show environment variable mapping
-```
-
-Config sources (in priority order): CLI flags > environment variables (`MLXSMITH__SECTION__KEY`) > config file > defaults.
-
-### Adapter management
-
-```bash
-mlxsmith adapters merge runs/sft_0001/adapter runs/pref_0001/adapter --weights 0.7 0.3
-```
-
-## Experimental features
-
-These features are implemented and available but have not been fully verified at scale. They may have rough edges.
 
 ### Preference tuning (DPO/ORPO)
 
@@ -172,23 +69,88 @@ mlxsmith distill --teacher large-model --student small-model --mode offline
 mlxsmith distill --teacher large-model --student small-model --mode opd
 ```
 
-### RLM self-play loop
+### Full pipeline
 
 ```bash
-# Single-process RLM
-mlxsmith rlm
-
-# Orchestrated multi-process RLM (queue-based inference + trainer workers)
-mlxsmith pipeline --orchestrated
-
-# Check RLM state
-mlxsmith rlm status
-mlxsmith rlm history
+# Run SFT → Pref → RFT in sequence
+mlxsmith pipeline
 ```
 
-Includes task generation, mutation for data diversity, corpus management, EMA-based gating, and weight pointer IPC for multi-process coordination.
+## Serving
 
-### Environment plugin system
+OpenAI-compatible `/v1/chat/completions` endpoint.
+
+```bash
+mlxsmith serve --model runs/sft_0001/adapter --port 8080
+```
+
+```bash
+curl http://localhost:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":64}'
+```
+
+Supports streaming (`"stream": true`), logprobs, stop sequences, and an optional UI dashboard (`serve.ui: true` in config).
+
+## Data tools
+
+```bash
+mlxsmith data presets                                     # list built-in datasets
+mlxsmith data pull alpaca                                 # pull a preset
+mlxsmith data import raw.json --out data/sft/train.jsonl  # import ShareGPT → JSONL
+mlxsmith data split data/sft/train.jsonl --fractions 0.9 0.05 0.05
+mlxsmith data stats data/sft/train.jsonl                  # token counts, field analysis
+mlxsmith data validate data/sft/train.jsonl               # structure check
+```
+
+Built-in presets: `alpaca`, `hh-rlhf`, `ultrachat-200k`, `ultrafeedback-binarized-prefs`, `ultrafeedback-binarized-sft`.
+
+## Model management
+
+```bash
+# Pull + convert HF model to MLX
+mlxsmith pull Qwen/Qwen3-4B-Instruct-2507
+
+# With quantization
+mlxsmith pull Qwen/Qwen3-4B-Instruct-2507 --quantize --q-bits 4
+
+# Merge adapters
+mlxsmith adapters merge runs/sft_0001/adapter runs/pref_0001/adapter --weights 0.7 0.3
+```
+
+## HF auth
+
+```bash
+mlxsmith auth login --token "$HF_TOKEN"
+mlxsmith auth status
+mlxsmith auth logout
+```
+
+## Eval and bench
+
+```bash
+# Evaluation suite (pass@k with verifier checks)
+mlxsmith eval --suite eval/suites/coding.yaml
+
+# Benchmark inference or training throughput
+mlxsmith bench --mode inference
+mlxsmith bench --mode trainer
+mlxsmith bench --mode end_to_end
+```
+
+## Verifiers
+
+Built-in verifiers for eval, RFT, and preference tuning:
+
+- **regex** — pattern matching on completions
+- **jsonschema** — JSON structure validation
+- **pytest** — sandboxed test execution
+- **docker** — containerized verification
+- **compose** — multi-verifier composition (AND/OR/weighted)
+
+See `docs/VERIFIERS.md` for the verifier API.
+
+## Environment plugin system
 
 ```bash
 mlxsmith env list                  # list available environments
@@ -199,9 +161,21 @@ mlxsmith env package ./my_env      # create distributable tarball
 mlxsmith env run envs/coding.yaml  # execute RFT with this environment
 ```
 
-Environments define tasks, verifiers, and reward functions for RFT and RLM training. See `docs/ENVIRONMENTS.md`.
+Environments define tasks, verifiers, and reward functions for RFT training. See `docs/ENVIRONMENTS.md`.
 
-### SDK (programmatic API)
+## Config system
+
+```bash
+mlxsmith config show              # display merged config (YAML/JSON/TOML)
+mlxsmith config show --sources    # show where each value comes from
+mlxsmith config init              # create default mlxsmith.yaml
+mlxsmith config validate          # check config structure
+mlxsmith config env               # show environment variable mapping
+```
+
+Config sources (in priority order): CLI flags > environment variables (`MLXSMITH__SECTION__KEY`) > config file > defaults.
+
+## SDK (programmatic API)
 
 For building custom training loops:
 
@@ -223,9 +197,24 @@ trainer.optim_step(fb.result().grads)
 
 Loss functions: DPO, ORPO, GRPO, CISPO, DRO, PPO, importance sampling, cross-entropy.
 
+## Research
+
+### RLM self-play loop
+
+RLM (Recursive Language Model) is a research feature — the infrastructure runs but has not produced measured gains yet.
+
+```bash
+mlxsmith rlm                       # single-process RLM
+mlxsmith pipeline --orchestrated   # multi-process orchestrated RLM
+mlxsmith rlm status                # check iteration state
+mlxsmith rlm history               # view history
+```
+
+Includes task generation, mutation for data diversity, corpus management, EMA-based gating, and weight pointer IPC for multi-process coordination. See `docs/orchestrator.md`.
+
 ### ZMLX acceleration
 
-Optional zero-copy MLX acceleration backend. Check availability:
+Optional zero-copy MLX acceleration backend.
 
 ```bash
 mlxsmith accel status

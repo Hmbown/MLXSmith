@@ -43,7 +43,7 @@ from .envs import (
 
 app = typer.Typer(
     add_completion=False,
-    help="mlxsmith — MLX fine-tuning + OpenAI-compatible serving (SFT stable; preference/RL experimental)",
+    help="mlxsmith — Apple Silicon MLX fine-tuning toolkit: SFT, DPO/ORPO, GRPO, distillation, and OpenAI-compatible serving.",
 )
 console = Console()
 
