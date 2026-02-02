@@ -25,6 +25,7 @@ Return fields:
 - `pytest_verifier.py`: run pytest in a per-rollout sandbox directory.
 - `docker_verifier.py`: run pytest inside a locked-down Docker container.
 - `compose.py`: compose multiple verifiers (AND/OR/weighted).
+- `llm_judge.py`: LLM-based verifier (self-verification / ThinkPRM-style).
 
 ## Sandbox behavior
 
@@ -67,6 +68,20 @@ verifier_kwargs:
         pattern: "def\\s+solve\\("
     - path: verifiers/pytest.py
 ```
+
+### LLM judge verifier
+
+Use `llm_judge.py` to score completions with a judge model. Example task:
+
+```yaml
+verifier_kwargs:
+  model: mlx-community/Qwen2.5-3B-Instruct-4bit
+  mode: thinkprm
+  rubric: "@verifiers/rubrics/coding.txt"
+  min_score: 0.6
+```
+
+You can also set `MLXSMITH_JUDGE_MODEL` to provide the default judge model id.
 
 The composed verifier reports per-verifier latency in `info.verifier_latencies_ms`.
 

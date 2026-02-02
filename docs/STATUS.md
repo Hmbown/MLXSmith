@@ -9,9 +9,10 @@ Date: 2026-02-02
 - Reinforced fine-tuning (GRPO) with token-level environments and verifier-based rewards.
 - Knowledge distillation (offline and OPD modes).
 - OpenAI-compatible `/v1/chat/completions` endpoint + streaming.
+- mlx-lm-lora passthrough (advanced training modes + synthetic datasets).
 - HF auth helpers: `mlxsmith auth login/status/logout`.
 - Dataset presets, pull, import, split, stats, validation.
-- Built-in verifiers: regex, jsonschema, pytest (sandboxed), docker, compose.
+- Built-in verifiers: regex, jsonschema, pytest (sandboxed), docker, compose, llm_judge.
 - Environment plugin system for RFT task/verifier packaging.
 - SDK: SamplingClient, TrainingClient, loss registry (DPO, ORPO, GRPO, CISPO, DRO, PPO).
 - Adapter merging, eval suites (pass@k), benchmarking.

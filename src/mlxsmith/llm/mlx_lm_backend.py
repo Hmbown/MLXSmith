@@ -467,7 +467,54 @@ class MlxLMBackend:
             return vag(self.model, loss_fn)(self.model)
         return loss_fn(self.model), None
 
-    def optimizer_and_params(self, *, lr: float, weight_decay: float = 0.0) -> tuple[Any, Any]:
+    def optimizer_and_params(
+        self,
+        *,
+        lr: float,
+        weight_decay: float = 0.0,
+        optimizer: str | None = None,
+        optimizer_kwargs: dict | None = None,
+    ) -> tuple[Any, Any]:
+        return self._optimizer_and_params(
+            lr=lr,
+            weight_decay=weight_decay,
+            optimizer=optimizer,
+            optimizer_kwargs=optimizer_kwargs,
+        )
+
+    def _resolve_optimizer(self, name: str):
+        assert self.optim is not None
+        name = name.strip().lower()
+        if name in ("muon", "muonclip", "muon_clip"):
+            from ..optim.muon import Muon, MuonClip
+
+            return MuonClip if name in ("muonclip", "muon_clip") else Muon
+        mapping = {
+            "adamw": ["AdamW", "Adamw", "adamw"],
+            "adam": ["Adam", "adam"],
+            "sgd": ["SGD", "Sgd", "sgd"],
+            "rmsprop": ["RMSprop", "RmsProp", "rmsprop"],
+            "qhadam": ["QHAdam", "Qhadam", "qhadam"],
+            "muon": ["Muon", "muon", "MuonW", "muonw"],
+        }
+        candidates = mapping.get(name, [name, name.capitalize(), name.upper()])
+        for cand in candidates:
+            opt_cls = getattr(self.optim, cand, None)
+            if opt_cls is not None:
+                return opt_cls
+        raise RuntimeError(
+            f"Optimizer '{name}' is not available in mlx.optimizers. "
+            "Install a build that provides it or choose a supported optimizer."
+        )
+
+    def _optimizer_and_params(
+        self,
+        *,
+        lr: float,
+        weight_decay: float = 0.0,
+        optimizer: str | None = None,
+        optimizer_kwargs: dict | None = None,
+    ) -> tuple[Any, Any]:
         assert self.optim is not None
         if self.model is None:
             raise RuntimeError("Backend not loaded")
@@ -483,7 +530,17 @@ class MlxLMBackend:
         if not params:
             params = getattr(self.model, "parameters", lambda: self.model)()
 
-        opt = self.optim.AdamW(learning_rate=lr, weight_decay=weight_decay)
+        opt_name = optimizer or "adamw"
+        opt_cls = self._resolve_optimizer(opt_name)
+        kwargs = dict(optimizer_kwargs or {})
+        if "learning_rate" not in kwargs and "lr" not in kwargs:
+            kwargs["learning_rate"] = lr
+            kwargs["lr"] = lr
+        if "weight_decay" not in kwargs:
+            kwargs["weight_decay"] = weight_decay
+        opt = self._call_with_supported_kwargs(opt_cls, **kwargs)
+        if opt is None:
+            opt = opt_cls()
         opt.init(params)
         return opt, params
 

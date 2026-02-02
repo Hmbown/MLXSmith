@@ -24,6 +24,8 @@ from .train.sft import run_sft
 from .train.pref import run_pref
 from .train.rft import run_rft
 from .train.distill import run_distill
+from .train.online_dpo import run_online_dpo
+from .train.self_verify import run_self_verify
 from .eval import run_eval
 from .bench import run_bench
 from .rlm import run_rlm, run_rlm_orchestrated
@@ -39,6 +41,13 @@ from .envs import (
     registry_info as registry_info_plugin,
     resolve_env_path as resolve_env_path_plugin,
     load_manifest as load_env_manifest,
+)
+from .integrations.mlx_lm_lora import (
+    build_train_command as build_mlx_lm_lora_train_command,
+    build_synthetic_command as build_mlx_lm_lora_synth_command,
+    build_judge_command as build_mlx_lm_lora_judge_command,
+    build_reward_functions_command as build_mlx_lm_lora_reward_functions_command,
+    run_command as run_mlx_lm_lora_command,
 )
 
 app = typer.Typer(
@@ -65,6 +74,9 @@ def init(path: str = typer.Argument(..., help="Project directory to create")):
     (p / "verifiers" / "regex.py").write_text(_sample_verifier_regex(), encoding="utf-8")
     (p / "verifiers" / "pytest.py").write_text(_sample_verifier_pytest(), encoding="utf-8")
     (p / "verifiers" / "jsonschema.py").write_text(_sample_verifier_jsonschema(), encoding="utf-8")
+    (p / "verifiers" / "llm_judge.py").write_text(_sample_verifier_llm_judge(), encoding="utf-8")
+    (p / "verifiers" / "rubrics").mkdir(parents=True, exist_ok=True)
+    (p / "verifiers" / "rubrics" / "coding.txt").write_text(_sample_judge_rubric(), encoding="utf-8")
     (p / "eval" / "suites" / "coding.yaml").write_text(_sample_eval_suite(), encoding="utf-8")
     console.print(f"[green]Initialized[/green] {p.resolve()}")
 
@@ -341,14 +353,19 @@ def pref(
     data: str = typer.Option("data/prefs", "--data"),
     model: str = typer.Option(..., "--model", help="Base adapter or model path (e.g., runs/sft_0001/adapter)"),
     accel: Optional[str] = typer.Option(None, "--accel", help="Override accel.backend"),
-    algo: Optional[str] = typer.Option(None, "--algo", help="Override pref.algo (dpo|orpo|grpo)"),
+    algo: Optional[str] = typer.Option(None, "--algo", help="Override pref.algo (legacy)"),
+    loss_type: Optional[str] = typer.Option(None, "--loss-type", help="dpo|cpo|orpo|ipo|hinge"),
 ):
     root = project_root_from_cwd()
+    overrides = {}
+    if loss_type is not None:
+        overrides["pref.loss_type"] = loss_type
     cfg = get_config(
         config_path=config,
         root=root,
         accel_backend=accel,
         algo=algo,
+        **overrides,
     )
     data_dir = root / data
     run = run_pref(root, cfg, data_dir, Path(model), cfg.accel.backend)
@@ -363,13 +380,27 @@ def rft(
     model: str = typer.Option(..., "--model"),
     accel: Optional[str] = typer.Option(None, "--accel", help="Override accel.backend"),
     rollouts: Optional[int] = typer.Option(None, "--rollouts", help="Override rft.rollouts"),
+    loss_type: Optional[str] = typer.Option(None, "--loss-type", help="grpo|dr_grpo|dapo"),
+    epsilon_low: Optional[float] = typer.Option(None, "--epsilon-low"),
+    epsilon_high: Optional[float] = typer.Option(None, "--epsilon-high"),
+    token_level_loss: Optional[bool] = typer.Option(None, "--token-level-loss/--sequence-level-loss"),
 ):
     root = project_root_from_cwd()
+    overrides = {}
+    if loss_type is not None:
+        overrides["rft.loss_type"] = loss_type
+    if epsilon_low is not None:
+        overrides["rft.epsilon_low"] = epsilon_low
+    if epsilon_high is not None:
+        overrides["rft.epsilon_high"] = epsilon_high
+    if token_level_loss is not None:
+        overrides["rft.token_level_loss"] = token_level_loss
     cfg = get_config(
         config_path=config,
         root=root,
         accel_backend=accel,
         rollouts=rollouts,
+        **overrides,
     )
     run = run_rft(root, cfg, root / env, root / verifier, Path(model), cfg.accel.backend)
     console.print(f"[bold]Run:[/bold] {run.run_dir}")
@@ -435,6 +466,142 @@ def distill(
         temperature=temperature,
     )
     console.print(f"[bold]Run:[/bold] {run.run_dir}")
+
+
+@app.command("online-dpo")
+def online_dpo(
+    data: str = typer.Option(..., "--data", help="JSONL with prompts"),
+    model: str = typer.Option(..., "--model"),
+    judge_model: Optional[str] = typer.Option(None, "--judge-model"),
+    judge_backend: str = typer.Option("mlx-lm", "--judge-backend"),
+    rubric: Optional[str] = typer.Option(None, "--rubric"),
+    group_size: Optional[int] = typer.Option(None, "--group-size"),
+    max_new_tokens: Optional[int] = typer.Option(None, "--max-new-tokens"),
+    temperature: Optional[float] = typer.Option(None, "--temperature"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
+    accel: Optional[str] = typer.Option(None, "--accel", help="Override accel.backend"),
+):
+    root = project_root_from_cwd()
+    cfg = get_config(config_path=config, root=root, accel_backend=accel)
+    run = run_online_dpo(
+        root,
+        cfg,
+        Path(data),
+        model,
+        cfg.accel.backend,
+        judge_model=judge_model,
+        judge_backend=judge_backend,
+        rubric=rubric,
+        group_size=group_size,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+    )
+    console.print(f"[bold]Run:[/bold] {run.run_dir}")
+
+
+@app.command("self-verify")
+def self_verify(
+    data: str = typer.Option(..., "--data", help="JSONL with prompts"),
+    model: str = typer.Option(..., "--model"),
+    verifier_model: Optional[str] = typer.Option(None, "--verifier-model"),
+    verifier_backend: str = typer.Option("mlx-lm", "--verifier-backend"),
+    rubric: Optional[str] = typer.Option(None, "--rubric"),
+    max_new_tokens: Optional[int] = typer.Option(None, "--max-new-tokens"),
+    temperature: Optional[float] = typer.Option(None, "--temperature"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
+    accel: Optional[str] = typer.Option(None, "--accel", help="Override accel.backend"),
+):
+    root = project_root_from_cwd()
+    cfg = get_config(config_path=config, root=root, accel_backend=accel)
+    run = run_self_verify(
+        root,
+        cfg,
+        Path(data),
+        model,
+        cfg.accel.backend,
+        verifier_model=verifier_model,
+        verifier_backend=verifier_backend,
+        rubric=rubric,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+    )
+    console.print(f"[bold]Run:[/bold] {run.run_dir}")
+
+
+lora_app = typer.Typer(help="mlx-lm-lora passthrough commands")
+app.add_typer(lora_app, name="lora")
+
+
+@lora_app.command(
+    "train",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def lora_train(
+    ctx: typer.Context,
+    config: Optional[str] = typer.Option(None, "--config", help="mlx-lm-lora config path"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model id or path"),
+    data: Optional[str] = typer.Option(None, "--data", help="Dataset path or HF dataset"),
+    train_mode: Optional[str] = typer.Option(None, "--train-mode", help="sft|dpo|orpo|grpo|ppo|..."),
+    train_type: Optional[str] = typer.Option(None, "--train-type", help="lora|dora|full"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+):
+    """Run mlx-lm-lora training with passthrough args.
+
+    Use `--` to pass through any additional mlx-lm-lora flags.
+    """
+    root = project_root_from_cwd()
+    cmd = build_mlx_lm_lora_train_command(
+        config=config,
+        model=model,
+        data=data,
+        train_mode=train_mode,
+        train_type=train_type,
+        extra_args=list(ctx.args),
+    )
+    run_mlx_lm_lora_command(cmd, dry_run=dry_run, cwd=root)
+
+
+@lora_app.command(
+    "synthetic",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def lora_synthetic(
+    ctx: typer.Context,
+    kind: str = typer.Argument(..., help="prompts|sft|dpo"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+):
+    """Run mlx-lm-lora synthetic dataset generation."""
+    root = project_root_from_cwd()
+    cmd = build_mlx_lm_lora_synth_command(kind, extra_args=list(ctx.args))
+    run_mlx_lm_lora_command(cmd, dry_run=dry_run, cwd=root)
+
+
+@lora_app.command(
+    "judge",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def lora_judge(
+    ctx: typer.Context,
+    dry_run: bool = typer.Option(False, "--dry-run"),
+):
+    """Run mlx-lm-lora judge model training."""
+    root = project_root_from_cwd()
+    cmd = build_mlx_lm_lora_judge_command(extra_args=list(ctx.args))
+    run_mlx_lm_lora_command(cmd, dry_run=dry_run, cwd=root)
+
+
+@lora_app.command(
+    "reward-functions",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def lora_reward_functions(
+    ctx: typer.Context,
+    dry_run: bool = typer.Option(False, "--dry-run"),
+):
+    """List mlx-lm-lora reward functions."""
+    root = project_root_from_cwd()
+    cmd = build_mlx_lm_lora_reward_functions_command(extra_args=list(ctx.args))
+    run_mlx_lm_lora_command(cmd, dry_run=dry_run, cwd=root)
 
 
 @app.command()
@@ -930,6 +1097,25 @@ def _sample_verifier_jsonschema() -> str:
 
 def verify(prompt: str, completion: str, workdir: str, **kwargs):
     return _verify(prompt, completion, workdir, **kwargs)
+"""
+
+
+def _sample_verifier_llm_judge() -> str:
+    return """from mlxsmith.verifiers.llm_judge import verify as _verify
+
+def verify(prompt: str, completion: str, workdir: str, **kwargs):
+    # Pass model=... or set MLXSMITH_JUDGE_MODEL for the judge model id.
+    return _verify(prompt, completion, workdir, **kwargs)
+"""
+
+
+def _sample_judge_rubric() -> str:
+    return """Score from 0.0 to 1.0.
+- 1.0: Correct, complete, and safe.
+- 0.7: Mostly correct with small issues.
+- 0.4: Partial correctness or unclear reasoning.
+- 0.0: Incorrect or unsafe.
+Return JSON only.
 """
 
 

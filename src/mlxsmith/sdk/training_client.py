@@ -210,6 +210,7 @@ class TrainingClient:
                         beta=batch.extra.get("beta", 0.1),
                         reference_backend=batch.extra.get("reference_backend"),
                         kl_coeff=batch.extra.get("kl_coeff", 0.0),
+                        delta=batch.extra.get("delta", 0.0),
                         train_on_prompt=batch.train_on_prompt,
                         max_seq_len=batch.max_seq_len,
                     )
@@ -514,12 +515,20 @@ class TrainingClient:
     # Utility Methods
     # ========================================================================
     
-    def create_optimizer(self, lr: float = 1e-4, weight_decay: float = 0.0) -> APIFuture[Any]:
+    def create_optimizer(
+        self,
+        lr: float = 1e-4,
+        weight_decay: float = 0.0,
+        optimizer: Optional[str] = None,
+        optimizer_kwargs: Optional[Dict[str, Any]] = None,
+    ) -> APIFuture[Any]:
         """Create optimizer for training.
         
         Args:
             lr: Learning rate
             weight_decay: Weight decay coefficient
+            optimizer: Optimizer name (e.g., adamw, adam, qhadam, muon)
+            optimizer_kwargs: Extra optimizer kwargs
             
         Returns:
             APIFuture resolving to optimizer instance
@@ -535,6 +544,8 @@ class TrainingClient:
                 self.backend,
                 lr=lr,
                 weight_decay=weight_decay,
+                optimizer=optimizer,
+                optimizer_kwargs=optimizer_kwargs,
             )
             return self.optimizer
         
@@ -588,10 +599,18 @@ class TrainingClient:
         if len(grads_list) == 1:
             return grads_list[0]
         
-        # Average gradients
-        # This is backend-specific; for now return first grad
-        # In practice, MLX would average the arrays
-        return grads_list[0]
+        from ..util import tree_add, tree_scale
+
+        agg = None
+        count = 0
+        for grads in grads_list:
+            if grads is None:
+                continue
+            agg = tree_add(agg, grads)
+            count += 1
+        if agg is None or count == 0:
+            return None
+        return tree_scale(agg, 1.0 / float(count))
     
     def shutdown(self) -> None:
         """Shutdown the client and its thread pool."""

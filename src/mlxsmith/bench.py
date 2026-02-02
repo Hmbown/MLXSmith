@@ -44,7 +44,12 @@ def run_bench(
     mode = (mode or "inference").lower()
 
     if mode == "trainer":
-        opt, _params = llm.optimizer_and_params(lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
+        opt, _params = llm.optimizer_and_params(
+            lr=cfg.train.lr,
+            weight_decay=cfg.train.weight_decay,
+            optimizer=cfg.train.optimizer,
+            optimizer_kwargs=cfg.train.optimizer_kwargs,
+        )
         prompt_ids = llm.encode(prompt)
         ids = llm.encode(prompt + " " + "x" * max_tokens)
         for i in range(max(1, reps)):
@@ -59,7 +64,12 @@ def run_bench(
             elapsed = max(time.time() - t0, 1e-6)
             results.append({"rep": i, "steps": steps, "time_s": elapsed, "steps_per_s": steps / elapsed})
     elif mode == "end_to_end":
-        opt, _params = llm.optimizer_and_params(lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
+        opt, _params = llm.optimizer_and_params(
+            lr=cfg.train.lr,
+            weight_decay=cfg.train.weight_decay,
+            optimizer=cfg.train.optimizer,
+            optimizer_kwargs=cfg.train.optimizer_kwargs,
+        )
         for i in range(max(1, reps)):
             t0 = time.time()
             gen = llm.generate(prompt, max_new_tokens=max_tokens, temperature=0.0)

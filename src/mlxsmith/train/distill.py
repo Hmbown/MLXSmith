@@ -109,7 +109,12 @@ def run_distill(
             )
             student.apply_lora_from_config(lora_cfg)
 
-        opt, _params = student.optimizer_and_params(lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
+        opt, _params = student.optimizer_and_params(
+            lr=cfg.train.lr,
+            weight_decay=cfg.train.weight_decay,
+            optimizer=cfg.train.optimizer,
+            optimizer_kwargs=cfg.train.optimizer_kwargs,
+        )
 
         rng = random.Random(cfg.train.seed)
         total = int(cfg.train.iters)

@@ -174,6 +174,23 @@ class TestTrainingClient:
         assert client.optimizer is not None
         
         client.shutdown()
+
+    def test_aggregate_gradients(self):
+        """Test gradient aggregation averages tensors."""
+        cfg = ProjectConfig()
+        cfg.model.backend = "mock"
+        loaded = load_model("dummy/model", cfg)
+
+        client = TrainingClient(loaded.backend)
+        grads = [
+            {"w": 1.0, "b": 2.0},
+            {"w": 3.0, "b": 4.0},
+        ]
+        agg = client._aggregate_gradients(grads)
+        assert agg["w"] == 2.0
+        assert agg["b"] == 3.0
+
+        client.shutdown()
     
     def test_forward_backward_sft(self):
         """Test forward/backward with SFT batch."""

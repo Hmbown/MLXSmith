@@ -259,6 +259,7 @@ def preference_forward_backward(
     kl_coeff: float = 0.0,
     train_on_prompt: bool = False,
     max_seq_len: Optional[int] = None,
+    delta: float = 0.0,
 ) -> Tuple[Any, Any | None]:
     """Execute preference-based forward/backward pass.
     
@@ -296,23 +297,38 @@ def preference_forward_backward(
             reference_backend=reference_backend,
             kl_coeff=kl_coeff,
             train_on_prompt=train_on_prompt,
+            delta=delta,
         )
 
     return backend.value_and_grad(loss_fn)
 
 
-def create_optimizer(backend: Any, *, lr: float, weight_decay: float = 0.0) -> Tuple[Any, Any]:
+def create_optimizer(
+    backend: Any,
+    *,
+    lr: float,
+    weight_decay: float = 0.0,
+    optimizer: Optional[str] = None,
+    optimizer_kwargs: Optional[dict] = None,
+) -> Tuple[Any, Any]:
     """Create optimizer for training.
     
     Args:
         backend: LLM backend instance
         lr: Learning rate
         weight_decay: Weight decay coefficient
+        optimizer: Optimizer name
+        optimizer_kwargs: Extra optimizer kwargs
         
     Returns:
         Tuple of (optimizer, parameters)
     """
-    return backend.optimizer_and_params(lr=lr, weight_decay=weight_decay)
+    return backend.optimizer_and_params(
+        lr=lr,
+        weight_decay=weight_decay,
+        optimizer=optimizer,
+        optimizer_kwargs=optimizer_kwargs,
+    )
 
 
 def optim_step(backend: Any, optimizer: Any, grads: Any) -> None:

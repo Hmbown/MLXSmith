@@ -46,12 +46,13 @@ def _rollout_token_env(
     max_steps: int,
     temperature: float,
     seed: int,
-) -> tuple[list[int], int, str, float, dict, int]:
+) -> tuple[list[int], int, str, float, dict, int, list[float]]:
     obs = env.initial_observation()
     obs_tokens, reward, done, info = _normalize_observation(obs)
     prompt_len = len(obs_tokens)
     full_tokens = list(obs_tokens)
     gen_tokens = 0
+    behavior_logprobs: list[float] = []
 
     for idx in range(max_steps):
         if done:
@@ -67,6 +68,8 @@ def _rollout_token_env(
             logprobs=0,
         )
         new_token = int(gen.token_ids[-1])
+        if gen.logprobs:
+            behavior_logprobs.append(float(gen.logprobs[-1]))
         full_tokens.append(new_token)
         gen_tokens += 1
 
@@ -77,7 +80,62 @@ def _rollout_token_env(
         obs_tokens = list(step.observation) if step.observation else list(full_tokens)
 
     completion = llm.decode(full_tokens[prompt_len:])
-    return full_tokens, prompt_len, completion, reward, info, gen_tokens
+    return full_tokens, prompt_len, completion, reward, info, gen_tokens, behavior_logprobs
+
+
+def _pg_loss(
+    llm,
+    token_ids: list[int],
+    *,
+    prompt_len: int,
+    advantage: float,
+    behavior_logprobs: list[float] | None,
+    loss_type: str,
+    epsilon_low: float,
+    epsilon_high: float,
+    token_level: bool,
+    ref_llm=None,
+    kl_coeff: float = 0.0,
+):
+    mx = llm.mx  # type: ignore
+    logp = None
+    if token_level:
+        token_logps, _ = llm.token_logprobs(
+            token_ids, prompt_len=prompt_len, top_k=0, include_prompt=False
+        )
+        if not token_logps:
+            return mx.array(0.0)
+        if loss_type == "dapo" and behavior_logprobs:
+            n = min(len(token_logps), len(behavior_logprobs))
+            total = mx.array(0.0)
+            for lp, bp in zip(token_logps[:n], behavior_logprobs[:n]):
+                ratio = mx.exp(mx.array(lp) - mx.array(bp))
+                clipped = mx.minimum(
+                    mx.maximum(ratio, mx.array(1.0 - epsilon_low)),
+                    mx.array(1.0 + epsilon_high),
+                )
+                total = total + clipped
+            loss = -mx.array(float(advantage)) * total / mx.array(float(n))
+        else:
+            avg_logp = sum(token_logps) / float(len(token_logps))
+            loss = -mx.array(float(advantage)) * mx.array(avg_logp)
+    else:
+        logp = llm.sequence_logprob(token_ids, prompt_len=prompt_len)
+        if loss_type == "dapo" and behavior_logprobs:
+            behavior = sum(behavior_logprobs)
+            ratio = mx.exp(logp - mx.array(float(behavior)))
+            clipped = mx.minimum(mx.maximum(ratio, mx.array(1.0 - epsilon_low)), mx.array(1.0 + epsilon_high))
+            loss = -mx.array(float(advantage)) * clipped
+        else:
+            loss = -mx.array(float(advantage)) * logp
+
+    if ref_llm is not None and kl_coeff > 0:
+        if logp is None:
+            logp = llm.sequence_logprob(token_ids, prompt_len=prompt_len)
+        ref_logp = ref_llm.sequence_logprob(token_ids, prompt_len=prompt_len)
+        loss = loss + mx.array(float(kl_coeff)) * (logp - ref_logp)
+
+    return loss
 
 
 def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_path: Path, base_model_path: Path, accel: str) -> RunPaths:
@@ -146,7 +204,12 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
         except BackendNotAvailable:
             ref_llm = None
 
-    opt, _params = llm.optimizer_and_params(lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
+    opt, _params = llm.optimizer_and_params(
+        lr=cfg.train.lr,
+        weight_decay=cfg.train.weight_decay,
+        optimizer=cfg.train.optimizer,
+        optimizer_kwargs=cfg.train.optimizer_kwargs,
+    )
 
     rng = random.Random(cfg.train.seed)
     total_iters = int(cfg.train.iters)
@@ -155,6 +218,10 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
     max_new = int(getattr(cfg.rft, "max_new_tokens", 256))
     kl_coeff = float(cfg.rft.kl_coeff)
     normalize_adv = bool(cfg.rft.normalize_advantage)
+    loss_type = str(cfg.rft.loss_type or cfg.rft.algo)
+    epsilon_low = float(getattr(cfg.rft, "epsilon_low", 0.2))
+    epsilon_high = float(getattr(cfg.rft, "epsilon_high", epsilon_low))
+    token_level = bool(getattr(cfg.rft, "token_level_loss", False))
 
     if token_env_spec is not None:
         base_name = env.get("name") or "token_env"
@@ -204,7 +271,7 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
                         seed=rng.randint(0, 2**31 - 1),
                     )
 
-                token_ids, prompt_len, completion, reward, info, gen_count = _rollout_token_env(
+                token_ids, prompt_len, completion, reward, info, gen_count, behavior_logprobs = _rollout_token_env(
                     llm,
                     env_instance,
                     max_steps=max_new,
@@ -225,27 +292,35 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
                             continue
 
                 passed = bool(info.get("passed", reward > 0.0))
-                gens.append((token_ids, prompt_len, completion, passed, reward, info))
+                gens.append((token_ids, prompt_len, completion, passed, reward, info, behavior_logprobs))
 
             gen_elapsed = max(time.time() - gen_start, 1e-6)
             tps = gen_tokens / gen_elapsed
 
-            mean_r = sum(r for *_rest, r, _info in gens) / max(1, len(gens))
+            mean_r = sum(r for *_rest, r, _info, _bp in gens) / max(1, len(gens))
             std_r = (
-                sum((r - mean_r) ** 2 for *_rest, r, _info in gens) / max(1, len(gens))
+                sum((r - mean_r) ** 2 for *_rest, r, _info, _bp in gens) / max(1, len(gens))
             ) ** 0.5
-            advs = [r - mean_r for *_rest, r, _info in gens]
-            if normalize_adv and std_r > 1e-6:
+            advs = [r - mean_r for *_rest, r, _info, _bp in gens]
+            if loss_type != "dr_grpo" and normalize_adv and std_r > 1e-6:
                 advs = [a / std_r for a in advs]
 
             def loss_fn(_model):
                 loss = llm.mx.array(0.0)  # type: ignore
-                for (token_ids, prompt_len, _comp, _passed, _reward, _info), adv in zip(gens, advs):
-                    logp = llm.sequence_logprob(token_ids, prompt_len=prompt_len)
-                    pg = -llm.mx.array(float(adv)) * logp  # type: ignore
-                    if ref_llm is not None and kl_coeff > 0:
-                        ref_logp = ref_llm.sequence_logprob(token_ids, prompt_len=prompt_len)
-                        pg = pg + llm.mx.array(kl_coeff) * (logp - ref_logp)  # type: ignore
+                for (token_ids, prompt_len, _comp, _passed, _reward, _info, bps), adv in zip(gens, advs):
+                    pg = _pg_loss(
+                        llm,
+                        token_ids,
+                        prompt_len=prompt_len,
+                        advantage=float(adv),
+                        behavior_logprobs=bps,
+                        loss_type=loss_type,
+                        epsilon_low=epsilon_low,
+                        epsilon_high=epsilon_high,
+                        token_level=token_level,
+                        ref_llm=ref_llm,
+                        kl_coeff=kl_coeff,
+                    )
                     loss = loss + pg
                 return loss / llm.mx.array(float(len(gens)))  # type: ignore
 
@@ -256,8 +331,8 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
             best_idx = max(range(len(gens)), key=lambda i: gens[i][4])
             best = gens[best_idx]
             pass_at_1 = 1.0 if gens[0][3] else 0.0
-            pass_at_k = 1.0 if any(passed for *_g, passed, _r, _i in gens) else 0.0
-            acceptance = sum(1 for *_g, passed, _r, _i in gens if passed) / max(1, len(gens))
+            pass_at_k = 1.0 if any(g[3] for g in gens) else 0.0
+            acceptance = sum(1 for g in gens if g[3]) / max(1, len(gens))
 
             latency_summary = latency_summary_ms(verifier_latencies_ms)
             per_verifier_summary = {
@@ -269,7 +344,7 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
                     "ts": now_ts(),
                     "step": step,
                     "kind": "rft",
-                    "algo": cfg.rft.algo,
+                    "algo": loss_type,
                     "task_id": task_id,
                     "mean_reward": mean_r,
                     "std_reward": std_r,
@@ -290,7 +365,7 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
                     metrics["verifier_latency_ms_by_path"] = per_verifier_summary
                 write_jsonl(run.metrics_path, [metrics])
 
-            for (token_ids, prompt_len, completion, passed, reward, _info) in gens:
+            for (token_ids, prompt_len, completion, passed, reward, _info, _bps) in gens:
                 if passed:
                     prompt_text = llm.decode(token_ids[:prompt_len]) if prompt_len > 0 else ""
                     write_jsonl(
@@ -331,14 +406,16 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
         per_verifier_latencies: dict[str, list[float]] = {}
 
         for k in range(rollouts):
-            gen = llm.generate(
+            gen = llm.generate_with_logprobs(
                 prompt,
                 max_new_tokens=max_new,
                 temperature=temperature,
                 seed=rng.randint(0, 2**31 - 1),
+                logprobs=0,
             )
             completion = gen.text[len(prompt) :] if gen.text.startswith(prompt) else gen.text
             gen_tokens += max(0, len(gen.token_ids) - gen.prompt_len)
+            behavior_logprobs = list(gen.logprobs) if gen.logprobs is not None else []
 
             wdir = ensure_dir(run.artifacts_dir / task_id / f"step_{step:06d}" / f"rollout_{k:02d}")
             if "tests" in task:
@@ -359,27 +436,35 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
 
             passed = bool(getattr(res, "passed", False))
             reward = float(getattr(res, "reward", 0.0))
-            gens.append((gen, completion, passed, reward))
+            gens.append((gen, completion, passed, reward, behavior_logprobs))
 
         gen_elapsed = max(time.time() - gen_start, 1e-6)
         tps = gen_tokens / gen_elapsed
 
-        mean_r = sum(r for *_rest, r in gens) / max(1, len(gens))
+        mean_r = sum(r for *_rest, r, _bp in gens) / max(1, len(gens))
         std_r = (
-            sum((r - mean_r) ** 2 for *_rest, r in gens) / max(1, len(gens))
+            sum((r - mean_r) ** 2 for *_rest, r, _bp in gens) / max(1, len(gens))
         ) ** 0.5
-        advs = [r - mean_r for *_rest, r in gens]
-        if normalize_adv and std_r > 1e-6:
+        advs = [r - mean_r for *_rest, r, _bp in gens]
+        if loss_type != "dr_grpo" and normalize_adv and std_r > 1e-6:
             advs = [a / std_r for a in advs]
 
         def loss_fn(_model):
             loss = llm.mx.array(0.0)  # type: ignore
-            for (gen, _comp, _passed, _reward), adv in zip(gens, advs):
-                logp = llm.sequence_logprob(gen.token_ids, prompt_len=gen.prompt_len)
-                pg = -llm.mx.array(float(adv)) * logp  # type: ignore
-                if ref_llm is not None and kl_coeff > 0:
-                    ref_logp = ref_llm.sequence_logprob(gen.token_ids, prompt_len=gen.prompt_len)
-                    pg = pg + llm.mx.array(kl_coeff) * (logp - ref_logp)  # type: ignore
+            for (gen, _comp, _passed, _reward, bps), adv in zip(gens, advs):
+                pg = _pg_loss(
+                    llm,
+                    list(gen.token_ids),
+                    prompt_len=gen.prompt_len,
+                    advantage=float(adv),
+                    behavior_logprobs=bps,
+                    loss_type=loss_type,
+                    epsilon_low=epsilon_low,
+                    epsilon_high=epsilon_high,
+                    token_level=token_level,
+                    ref_llm=ref_llm,
+                    kl_coeff=kl_coeff,
+                )
                 loss = loss + pg
             return loss / llm.mx.array(float(len(gens)))  # type: ignore
 
@@ -390,8 +475,8 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
         best_idx = max(range(len(gens)), key=lambda i: gens[i][3])
         best = gens[best_idx]
         pass_at_1 = 1.0 if gens[0][2] else 0.0
-        pass_at_k = 1.0 if any(passed for _g, _c, passed, _r in gens) else 0.0
-        acceptance = sum(1 for *_rest, passed, _reward in gens if passed) / max(1, len(gens))
+        pass_at_k = 1.0 if any(g[2] for g in gens) else 0.0
+        acceptance = sum(1 for g in gens if g[2]) / max(1, len(gens))
 
         latency_summary = latency_summary_ms([t * 1000.0 for t in verifier_times])
         per_verifier_summary = {
@@ -406,10 +491,10 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
                         "ts": now_ts(),
                         "step": step,
                         "kind": "rft",
-                        "algo": cfg.rft.algo,
-                        "task_id": task_id,
-                        "mean_reward": mean_r,
-                        "std_reward": std_r,
+                    "algo": loss_type,
+                    "task_id": task_id,
+                    "mean_reward": mean_r,
+                    "std_reward": std_r,
                         "best_reward": best[3],
                         "best_passed": best[2],
                         "pass@1": pass_at_1,
@@ -429,7 +514,7 @@ def run_rft(project_root: Path, cfg: ProjectConfig, env_path: Path, verifier_pat
                 ],
             )
 
-        for (gen, completion, passed, reward) in gens:
+        for (gen, completion, passed, reward, _bp) in gens:
             if passed:
                 write_jsonl(
                     accepted_path,

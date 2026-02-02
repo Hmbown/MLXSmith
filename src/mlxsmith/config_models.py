@@ -47,6 +47,8 @@ class TrainConfig(BaseModel):
     grad_accum: int = 8
     lr: float = 2e-4
     weight_decay: float = 0.0
+    optimizer: str = "adamw"
+    optimizer_kwargs: Dict[str, Any] = Field(default_factory=dict)
     iters: int = 1000
     save_every: int = 100
     eval_every: int = 100
@@ -60,6 +62,11 @@ class TrainConfig(BaseModel):
         if v < 0:
             raise ValueError("value must be non-negative")
         return v
+
+    @field_validator("optimizer")
+    @classmethod
+    def normalize_optimizer(cls, v: str) -> str:
+        return v.strip().lower()
 
 
 class LoraConfig(BaseModel):
@@ -89,11 +96,13 @@ class LoraConfig(BaseModel):
 
 
 class PrefConfig(BaseModel):
-    """Preference tuning configuration (DPO, ORPO, GRPO)."""
+    """Preference tuning configuration (DPO variants)."""
     
     algo: Literal["dpo", "orpo", "grpo"] = "dpo"
+    loss_type: Literal["dpo", "cpo", "orpo", "ipo", "hinge"] = "dpo"
     beta: float = 0.1
     kl_coeff: float = 0.0
+    delta: float = 0.0
     reference_model: Optional[str] = None
 
 
@@ -101,12 +110,16 @@ class RftConfig(BaseModel):
     """Reinforcement fine-tuning configuration."""
     
     algo: Literal["grpo"] = "grpo"
+    loss_type: Literal["grpo", "dr_grpo", "dapo"] = "grpo"
     rollouts: int = 8
     kl_coeff: float = 0.02
     max_steps_per_task: int = 1
     temperature: float = 0.8
     max_new_tokens: int = 256
     normalize_advantage: bool = True
+    epsilon_low: float = 0.2
+    epsilon_high: float = 0.2
+    token_level_loss: bool = False
     reference_model: Optional[str] = None
 
 
@@ -164,6 +177,7 @@ CLI_ALIASES: dict[str, tuple[str, ...]] = {
     "lr": ("train", "lr"),
     "batch_size": ("train", "batch_size"),
     "iters": ("train", "iters"),
+    "optimizer": ("train", "optimizer"),
     "model_id": ("model", "id"),
     "accel_backend": ("accel", "backend"),
     "host": ("serve", "host"),

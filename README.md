@@ -19,6 +19,9 @@ pip install mlxsmith
 # Apple Silicon training + serving
 pip install "mlxsmith[mlx,llm,serve]"
 
+# mlx-lm-lora passthrough (advanced training methods)
+pip install "mlxsmith[lora]"
+
 # Everything
 pip install "mlxsmith[all]"
 ```
@@ -74,6 +77,22 @@ mlxsmith distill --teacher large-model --student small-model --mode opd
 ```bash
 # Run SFT → Pref → RFT in sequence
 mlxsmith pipeline
+```
+
+### mlx-lm-lora parity (all methods)
+
+Use the passthrough to access mlx-lm-lora features (DPO variants, GRPO variants,
+PPO, synthetic datasets, judge training, etc.):
+
+```bash
+# Train with mlx-lm-lora directly
+mlxsmith lora train --model Qwen/Qwen3-4B-Instruct-2507 --data data/prefs --train-mode dpo -- --beta 0.1
+
+# Generate synthetic datasets
+mlxsmith lora synthetic prompts -- --model mlx-community/Qwen3-4B-Instruct-2507-4bit --num-samples 1000
+
+# Train judge model
+mlxsmith lora judge -- --model mlx-community/Qwen3-4B-Instruct-2507-4bit --data data/prefs
 ```
 
 ## Serving
@@ -147,6 +166,7 @@ Built-in verifiers for eval, RFT, and preference tuning:
 - **pytest** — sandboxed test execution
 - **docker** — containerized verification
 - **compose** — multi-verifier composition (AND/OR/weighted)
+- **llm_judge** — LLM-based self-verification / ThinkPRM-style verifier
 
 See `docs/VERIFIERS.md` for the verifier API.
 
@@ -174,6 +194,9 @@ mlxsmith config env               # show environment variable mapping
 ```
 
 Config sources (in priority order): CLI flags > environment variables (`MLXSMITH__SECTION__KEY`) > config file > defaults.
+
+Training optimizers are configurable via `train.optimizer` and `train.optimizer_kwargs`
+(for example `adamw`, `adam`, `qhadam`, `muon` when available in MLX).
 
 ## SDK (programmatic API)
 

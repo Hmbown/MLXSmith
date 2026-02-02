@@ -47,6 +47,14 @@ repeatable, and observable.
 9) **Model registry view**: detect cached models, metadata, and size.
 10) **Release artifacts**: prebuilt wheels + notarized macOS app bundle.
 
+### P2.5 — Research add-ons
+11) **PARL (agentic training)**: tool-using rollouts with verifier-gated rewards (under consideration).
+12) **PRIME-style process rewards**: implicit process reward shaping + stepwise scoring. ✅ Implemented
+13) **ThinkPRM / self-verification**: LLM judge verifier with process grading. ✅ Implemented
+14) **Muon optimizer**: Newton-Schulz orthogonalization optimizer. ✅ Implemented
+15) **Online-DPO**: online preference optimization from judge rewards. ✅ Implemented
+16) **Self-verify training**: policy gradient with LLM judge reward signal. ✅ Implemented
+
 ### P3 — macOS Swift app (mlxsmith Studio)
 Goal: a native UI that mirrors the CLI workflows and streamlines onboarding.
 

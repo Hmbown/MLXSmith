@@ -112,7 +112,14 @@ class LLMBackend(Protocol):
     def value_and_grad(self, loss_fn) -> tuple[Any, Any | None]:
         """Return (loss, grads) using backend autograd when available."""
 
-    def optimizer_and_params(self, *, lr: float, weight_decay: float = 0.0) -> tuple[Any, Any]:
+    def optimizer_and_params(
+        self,
+        *,
+        lr: float,
+        weight_decay: float = 0.0,
+        optimizer: str | None = None,
+        optimizer_kwargs: dict | None = None,
+    ) -> tuple[Any, Any]:
         """Return (optimizer, trainable_params_tree)."""
 
     def apply_grads(self, optimizer: Any, grads: Any) -> None:

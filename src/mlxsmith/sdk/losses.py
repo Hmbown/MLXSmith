@@ -70,6 +70,76 @@ def preference_diff(
     return (logp_c - logp_r) - ref_diff
 
 
+@register_loss("cpo")
+def cpo_loss(
+    backend,
+    chosen_ids: Sequence[int],
+    rejected_ids: Sequence[int],
+    *,
+    prompt_len_chosen: int,
+    prompt_len_rejected: int,
+    beta: float = 0.1,
+) -> Any:
+    mx = _require_mx(backend)
+    diff = preference_diff(
+        backend,
+        chosen_ids,
+        rejected_ids,
+        prompt_len_chosen=prompt_len_chosen,
+        prompt_len_rejected=prompt_len_rejected,
+        reference_backend=None,
+    )
+    scaled = _to_mx_scalar(mx, beta) * diff
+    return mx.log1p(mx.exp(-scaled))
+
+
+@register_loss("ipo")
+def ipo_loss(
+    backend,
+    chosen_ids: Sequence[int],
+    rejected_ids: Sequence[int],
+    *,
+    prompt_len_chosen: int,
+    prompt_len_rejected: int,
+    beta: float = 0.1,
+    reference_backend: Optional[Any] = None,
+) -> Any:
+    mx = _require_mx(backend)
+    diff = preference_diff(
+        backend,
+        chosen_ids,
+        rejected_ids,
+        prompt_len_chosen=prompt_len_chosen,
+        prompt_len_rejected=prompt_len_rejected,
+        reference_backend=reference_backend,
+    )
+    target = _to_mx_scalar(mx, 1.0 / (2.0 * float(beta))) if beta != 0 else _to_mx_scalar(mx, 0.0)
+    return (diff - target) ** 2
+
+
+@register_loss("hinge")
+def hinge_loss(
+    backend,
+    chosen_ids: Sequence[int],
+    rejected_ids: Sequence[int],
+    *,
+    prompt_len_chosen: int,
+    prompt_len_rejected: int,
+    delta: float = 0.0,
+    reference_backend: Optional[Any] = None,
+) -> Any:
+    mx = _require_mx(backend)
+    diff = preference_diff(
+        backend,
+        chosen_ids,
+        rejected_ids,
+        prompt_len_chosen=prompt_len_chosen,
+        prompt_len_rejected=prompt_len_rejected,
+        reference_backend=reference_backend,
+    )
+    return mx.maximum(_to_mx_scalar(mx, delta) - diff, _to_mx_scalar(mx, 0.0))
+
+
 @register_loss("dpo")
 def dpo_loss(
     backend,
@@ -149,8 +219,10 @@ def preference_loss(
     reference_backend: Optional[Any] = None,
     kl_coeff: float = 0.0,
     train_on_prompt: bool = False,
+    delta: float = 0.0,
 ) -> Any:
-    if algo.lower() == "orpo":
+    algo_l = algo.lower()
+    if algo_l == "orpo":
         return orpo_loss(
             backend,
             chosen_ids,
@@ -161,6 +233,35 @@ def preference_loss(
             reference_backend=reference_backend,
             kl_coeff=kl_coeff,
             train_on_prompt=train_on_prompt,
+        )
+    if algo_l == "cpo":
+        return cpo_loss(
+            backend,
+            chosen_ids,
+            rejected_ids,
+            prompt_len_chosen=prompt_len_chosen,
+            prompt_len_rejected=prompt_len_rejected,
+            beta=beta,
+        )
+    if algo_l == "ipo":
+        return ipo_loss(
+            backend,
+            chosen_ids,
+            rejected_ids,
+            prompt_len_chosen=prompt_len_chosen,
+            prompt_len_rejected=prompt_len_rejected,
+            beta=beta,
+            reference_backend=reference_backend,
+        )
+    if algo_l == "hinge":
+        return hinge_loss(
+            backend,
+            chosen_ids,
+            rejected_ids,
+            prompt_len_chosen=prompt_len_chosen,
+            prompt_len_rejected=prompt_len_rejected,
+            delta=delta,
+            reference_backend=reference_backend,
         )
     return dpo_loss(
         backend,

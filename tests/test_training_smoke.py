@@ -65,6 +65,12 @@ def verify(prompt, completion, workdir, **kwargs):
 
     run_rft(tmp_path, cfg, env, verifier, run.adapter_dir, "none")
 
+    # RFT variants
+    cfg.rft.loss_type = "dr_grpo"
+    run_rft(tmp_path, cfg, env, verifier, run.adapter_dir, "none")
+    cfg.rft.loss_type = "dapo"
+    run_rft(tmp_path, cfg, env, verifier, run.adapter_dir, "none")
+
     # Token-level env (custom) smoke
     token_env_py = tmp_path / "envs" / "token_env.py"
     token_env_py.write_text(

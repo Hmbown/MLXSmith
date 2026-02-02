@@ -49,6 +49,28 @@ from .weights import (
 console = Console()
 
 
+def _run_task_verifier(cfg: ProjectConfig, task_prompt: str, completion: str, workdir: Path) -> tuple[bool, float, float]:
+    """Execute verifier for a task and return (passed, reward, latency_ms)."""
+    t0 = time.time()
+    if cfg.rlm.verifier_backend == "docker":
+        res = docker_verify(
+            task_prompt,
+            completion,
+            str(workdir),
+            timeout_s=int(cfg.rlm.verifier_timeout_s),
+            image=cfg.rlm.docker_image,
+            memory_mb=int(cfg.rlm.docker_memory_mb),
+            cpus=float(cfg.rlm.docker_cpus),
+            pids=int(cfg.rlm.docker_pids),
+        )
+    else:
+        res = pytest_verify(task_prompt, completion, str(workdir), timeout_s=int(cfg.rlm.verifier_timeout_s))
+    latency_ms = (time.time() - t0) * 1000.0
+    passed = bool(getattr(res, "passed", False))
+    reward = float(getattr(res, "reward", 0.0))
+    return passed, reward, latency_ms
+
+
 def _score_from_eval(result_path: Path) -> float:
     try:
         data = json.loads(result_path.read_text(encoding="utf-8"))
@@ -199,7 +221,12 @@ def run_rlm(
                 trust_remote_code=cfg.model.trust_remote_code,
             )
 
-        opt, _params = train_llm.optimizer_and_params(lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
+        opt, _params = train_llm.optimizer_and_params(
+            lr=cfg.train.lr,
+            weight_decay=cfg.train.weight_decay,
+            optimizer=cfg.train.optimizer,
+            optimizer_kwargs=cfg.train.optimizer_kwargs,
+        )
 
         corpus_rows = load_corpus(corpus_path, max_size=int(rlm_cfg.corpus_max))
         existing_prompts = [row.get("prompt", "") for row in corpus_rows if row.get("prompt")]
@@ -371,9 +398,14 @@ def run_rlm(
 # Multi-Process Orchestrated RLM
 # =============================================================================
 
-from ..orchestrator.queue import MessageQueue, MessageType, Message  # noqa: E402
-from ..orchestrator.inference_worker import InferenceConfig, run_inference_worker  # noqa: E402
-from ..orchestrator.trainer_worker import TrainerConfig, run_trainer_worker  # noqa: E402
+def _lazy_import_orchestrator():
+    """Lazy import to break circular dependency with orchestrator module."""
+    global MessageQueue, MessageType, Message
+    global InferenceConfig, run_inference_worker
+    global TrainerConfig, run_trainer_worker
+    from ..orchestrator.queue import MessageQueue, MessageType, Message  # noqa: E402
+    from ..orchestrator.inference_worker import InferenceConfig, run_inference_worker  # noqa: E402
+    from ..orchestrator.trainer_worker import TrainerConfig, run_trainer_worker  # noqa: E402
 
 
 @dataclass
@@ -402,6 +434,7 @@ class RLMOrchestrator:
         iterations: int = 50,
         resume: bool = False,
     ):
+        _lazy_import_orchestrator()
         self.project_root = project_root
         self.cfg = cfg
         self.model_spec = model_spec
@@ -492,6 +525,8 @@ class RLMOrchestrator:
             trust_remote_code=self.cfg.model.trust_remote_code,
             lr=self.cfg.train.lr,
             weight_decay=self.cfg.train.weight_decay,
+            optimizer=self.cfg.train.optimizer,
+            optimizer_kwargs=self.cfg.train.optimizer_kwargs,
             kl_coeff=self.cfg.rft.kl_coeff,
             normalize_advantage=self.cfg.rft.normalize_advantage,
             lora_r=self.cfg.lora.r,
@@ -602,30 +637,12 @@ class RLMOrchestrator:
                 tests_dir = ensure_dir(wdir / "tests")
                 (tests_dir / "test_task.py").write_text(task.tests, encoding="utf-8")
                 
-                t0 = time.time()
-                if self.cfg.rlm.verifier_backend == "docker":
-                    res = docker_verify(
-                        task.prompt,
-                        completion,
-                        str(wdir),
-                        timeout_s=int(self.cfg.rlm.verifier_timeout_s),
-                        image=self.cfg.rlm.docker_image,
-                        memory_mb=int(self.cfg.rlm.docker_memory_mb),
-                        cpus=float(self.cfg.rlm.docker_cpus),
-                        pids=int(self.cfg.rlm.docker_pids),
-                    )
-                else:
-                    from ..verifiers.pytest_verifier import verify as pytest_verify
-                    res = pytest_verify(
-                        task.prompt,
-                        completion,
-                        str(wdir),
-                        timeout_s=int(self.cfg.rlm.verifier_timeout_s),
-                    )
-                latency_ms = (time.time() - t0) * 1000.0
-                
-                passed = bool(getattr(res, "passed", False))
-                reward = float(getattr(res, "reward", 0.0))
+                passed, reward, latency_ms = _run_task_verifier(
+                    self.cfg,
+                    task.prompt,
+                    completion,
+                    wdir,
+                )
                 
                 rollouts.append(Rollout(
                     task_id=task.id,
@@ -706,30 +723,12 @@ class RLMOrchestrator:
                 tests_dir = ensure_dir(wdir / "tests")
                 (tests_dir / "test_task.py").write_text(task.tests, encoding="utf-8")
 
-                t0 = time.time()
-                if self.cfg.rlm.verifier_backend == "docker":
-                    res = docker_verify(
-                        task.prompt,
-                        completion,
-                        str(wdir),
-                        timeout_s=int(self.cfg.rlm.verifier_timeout_s),
-                        image=self.cfg.rlm.docker_image,
-                        memory_mb=int(self.cfg.rlm.docker_memory_mb),
-                        cpus=float(self.cfg.rlm.docker_cpus),
-                        pids=int(self.cfg.rlm.docker_pids),
-                    )
-                else:
-                    from ..verifiers.pytest_verifier import verify as pytest_verify
-                    res = pytest_verify(
-                        task.prompt,
-                        completion,
-                        str(wdir),
-                        timeout_s=int(self.cfg.rlm.verifier_timeout_s),
-                    )
-                latency_ms = (time.time() - t0) * 1000.0
-
-                passed = bool(getattr(res, "passed", False))
-                reward = float(getattr(res, "reward", 0.0))
+                passed, reward, latency_ms = _run_task_verifier(
+                    self.cfg,
+                    task.prompt,
+                    completion,
+                    wdir,
+                )
 
                 rollouts.append(
                     Rollout(
@@ -1171,28 +1170,7 @@ def collect_rollouts_via_api(
                 wdir = ensure_dir(artifacts_dir / task.id / f"rollout_{k:02d}")
                 (wdir / "main.py").write_text(completion, encoding="utf-8")
                 (ensure_dir(wdir / "tests") / "test_task.py").write_text(task.tests, encoding="utf-8")
-                t0 = time.time()
-                if verifier_backend == "docker":
-                    res = docker_verify(
-                        task.prompt,
-                        completion,
-                        str(wdir),
-                        timeout_s=int(cfg.rlm.verifier_timeout_s),
-                        image=cfg.rlm.docker_image,
-                        memory_mb=int(cfg.rlm.docker_memory_mb),
-                        cpus=float(cfg.rlm.docker_cpus),
-                        pids=int(cfg.rlm.docker_pids),
-                    )
-                else:
-                    res = pytest_verify(
-                        task.prompt,
-                        completion,
-                        str(wdir),
-                        timeout_s=int(cfg.rlm.verifier_timeout_s),
-                    )
-                latency_ms = (time.time() - t0) * 1000.0
-                passed = bool(getattr(res, "passed", False))
-                reward = float(getattr(res, "reward", 0.0))
+                passed, reward, latency_ms = _run_task_verifier(cfg, task.prompt, completion, wdir)
                 rollouts.append(
                     Rollout(
                         task_id=task.id,
@@ -1247,24 +1225,7 @@ def collect_rollouts_via_api(
                 (wdir / "main.py").write_text(completion, encoding="utf-8")
                 (ensure_dir(wdir / "tests") / "test_task.py").write_text(task.tests, encoding="utf-8")
                 
-                t0 = time.time()
-                if verifier_backend == "docker":
-                    res = docker_verify(
-                        task.prompt,
-                        completion,
-                        str(wdir),
-                        timeout_s=int(cfg.rlm.verifier_timeout_s),
-                        image=cfg.rlm.docker_image,
-                        memory_mb=int(cfg.rlm.docker_memory_mb),
-                        cpus=float(cfg.rlm.docker_cpus),
-                        pids=int(cfg.rlm.docker_pids),
-                    )
-                else:
-                    res = pytest_verify(task.prompt, completion, str(wdir), timeout_s=int(cfg.rlm.verifier_timeout_s))
-                latency_ms = (time.time() - t0) * 1000.0
-                
-                passed = bool(getattr(res, "passed", False))
-                reward = float(getattr(res, "reward", 0.0))
+                passed, reward, latency_ms = _run_task_verifier(cfg, task.prompt, completion, wdir)
                 
                 rollouts.append(Rollout(
                     task_id=task.id,

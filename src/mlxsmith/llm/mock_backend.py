@@ -200,7 +200,14 @@ class MockBackend:
     def value_and_grad(self, loss_fn):
         return loss_fn(self.model), None
 
-    def optimizer_and_params(self, *, lr: float, weight_decay: float = 0.0):
+    def optimizer_and_params(
+        self,
+        *,
+        lr: float,
+        weight_decay: float = 0.0,
+        optimizer: str | None = None,
+        optimizer_kwargs: dict | None = None,
+    ):
         return object(), {}
 
     def apply_grads(self, optimizer: Any, grads: Any) -> None:

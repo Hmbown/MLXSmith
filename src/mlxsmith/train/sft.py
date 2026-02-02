@@ -79,7 +79,12 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
         )
         return run
 
-    opt, _params = llm.optimizer_and_params(lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
+    opt, _params = llm.optimizer_and_params(
+        lr=cfg.train.lr,
+        weight_decay=cfg.train.weight_decay,
+        optimizer=cfg.train.optimizer,
+        optimizer_kwargs=cfg.train.optimizer_kwargs,
+    )
 
     total = int(cfg.train.iters)
     grad_accum = max(1, int(cfg.train.grad_accum))
@@ -89,6 +94,7 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
     rng = random.Random(cfg.train.seed)
     accum_grads = None
     accum_loss = 0.0
+    accum_count = 0
 
     for step in range(1, total + 1):
         row = rng.choice(rows)
@@ -110,6 +116,7 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
 
         lval, grads = llm.value_and_grad(loss_fn)
         accum_loss += float(lval.item()) if hasattr(lval, "item") else float(lval)
+        accum_count += 1
         if grads is not None:
             accum_grads = tree_add(accum_grads, grads)
 
@@ -121,8 +128,12 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
                 llm.apply_grads(opt, scaled)
             accum_grads = None
             accum_loss = 0.0
+            accum_count = 0
 
         if step % cfg.train.log_every == 0 or step == 1 or step == total:
+            avg_loss = (accum_loss / max(1, accum_count)) if accum_count else (
+                float(lval.item()) if hasattr(lval, "item") else float(lval)
+            )
             write_jsonl(
                 run.metrics_path,
                 [
@@ -130,7 +141,7 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
                         "ts": now_ts(),
                         "step": step,
                         "kind": "sft",
-                        "loss": float(lval.item()) if hasattr(lval, "item") else float(lval),
+                        "loss": avg_loss,
                         "accel": backend.name,
                     }
                 ],

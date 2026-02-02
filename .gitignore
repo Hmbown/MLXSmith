@@ -37,6 +37,14 @@ swiftuithoughts.md
 # Local run configs (contain machine-specific paths)
 mlxsmith.yaml
 qwen3.yaml
+fluxem.yaml
+
+# Training data and environments
+data/
+envs/
+
+# Verifier rubrics (project-specific)
+verifiers/rubrics/
 
 # OS
 .DS_Store

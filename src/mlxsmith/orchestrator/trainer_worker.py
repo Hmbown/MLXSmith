@@ -37,6 +37,8 @@ class TrainerConfig:
     # Training config
     lr: float = 2e-4
     weight_decay: float = 0.0
+    optimizer: str = "adamw"
+    optimizer_kwargs: Dict[str, Any] = field(default_factory=dict)
     kl_coeff: float = 0.02
     normalize_advantage: bool = True
     
@@ -129,6 +131,8 @@ class TrainerWorker:
         self._optimizer, _ = self._llm.optimizer_and_params(
             lr=self.config.lr,
             weight_decay=self.config.weight_decay,
+            optimizer=self.config.optimizer,
+            optimizer_kwargs=self.config.optimizer_kwargs,
         )
         
         # Load reference model if needed for KL
