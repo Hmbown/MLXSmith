@@ -8,7 +8,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import Optional, Sequence
 
 from rich.console import Console
 
