@@ -182,11 +182,9 @@ def compute_logprobs(
     else:
         prompt_len = len(prompt_ids)
     
-    # Get generation with logprobs
-    full_text = backend.decode(ids)
-    
-    # Use backend's sequence_logprob if available
-    seq_logprob = backend.sequence_logprob(ids, prompt_len=prompt_len)
+    # Decode and compute sequence-level logprob (used by callers via backend state)
+    backend.decode(ids)
+    backend.sequence_logprob(ids, prompt_len=prompt_len)
     
     # For per-token logprobs, we'd need to do a forward pass
     # This is a simplified version

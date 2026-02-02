@@ -20,11 +20,10 @@ import uuid
 from pathlib import Path
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Security, status
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Security, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
 
 from .schemas import (
     AdapterReloadRequest,
@@ -1102,12 +1101,10 @@ def create_router(
         models, use the list endpoint to check completion status.
         """
         cache_dir = _get_cache_dir()
-        local_path = cache_dir / "mlx" / request.model_id.replace("/", "__")
-        
+
         try:
             # Import here to avoid circular dependencies
             from ..models import hf_pull
-            from ..config import ProjectConfig
             
             # Get HF token if available
             hf_token = None

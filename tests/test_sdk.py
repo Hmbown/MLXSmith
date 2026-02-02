@@ -4,14 +4,12 @@ Tests APIFuture, TrainingClient, SamplingClient, and logprobs functionality.
 """
 
 import time
-import threading
-from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from mlxsmith.config import ProjectConfig
 from mlxsmith.infer import ChatMessage, run_chat
-from mlxsmith.llm.backend import DecodingConfig, Generation
+from mlxsmith.llm.backend import DecodingConfig
 from mlxsmith.sdk import (
     # Core SDK functions
     create_optimizer,
@@ -24,9 +22,6 @@ from mlxsmith.sdk import (
     preference_forward_backward,
     sample,
     sft_forward_backward,
-    save_adapter,
-    
-    # Futures
     APIFuture,
     APIFutureState,
     completed_future,
@@ -37,7 +32,6 @@ from mlxsmith.sdk import (
     TrainingClient,
     TrainingBatch,
     ForwardBackwardResult,
-    OptimizerStepResult,
     CheckpointResult,
     WeightsResult,
     DistillationTrainingClient,
@@ -175,7 +169,7 @@ class TestTrainingClient:
         
         client = TrainingClient(loaded.backend)
         future = client.create_optimizer(lr=1e-4, weight_decay=0.01)
-        optimizer = future.result()
+        future.result()
         
         assert client.optimizer is not None
         

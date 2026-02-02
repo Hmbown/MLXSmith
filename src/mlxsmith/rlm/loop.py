@@ -15,12 +15,11 @@ from __future__ import annotations
 import json
 import multiprocessing as mp
 import signal
-import sys
 import time
 import traceback
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Callable
+from typing import Dict, List, Optional
 
 from rich.console import Console
 
@@ -35,10 +34,9 @@ from ..verifiers.docker_verifier import verify as docker_verify
 from ..verifiers.pytest_verifier import verify as pytest_verify
 from .corpus import append_corpus, load_corpus, sample_corpus
 from .gating import load_state, save_state, should_accept, update_state
-from .generate import GeneratedTask, generate_tasks, filter_tasks
+from .generate import GeneratedTask
 from .history import append_history
 from .inference import Rollout, build_tasks
-from .mutate import mutate_tasks
 from .trainer import train_on_rollouts
 from .weights import (
     WeightPointer,
@@ -373,9 +371,9 @@ def run_rlm(
 # Multi-Process Orchestrated RLM
 # =============================================================================
 
-from ..orchestrator.queue import MessageQueue, MessageType, Message
-from ..orchestrator.inference_worker import InferenceConfig, run_inference_worker
-from ..orchestrator.trainer_worker import TrainerConfig, run_trainer_worker
+from ..orchestrator.queue import MessageQueue, MessageType, Message  # noqa: E402
+from ..orchestrator.inference_worker import InferenceConfig, run_inference_worker  # noqa: E402
+from ..orchestrator.trainer_worker import TrainerConfig, run_trainer_worker  # noqa: E402
 
 
 @dataclass

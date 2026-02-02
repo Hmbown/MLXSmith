@@ -7,9 +7,8 @@ and progress tracking for async operations.
 from __future__ import annotations
 
 import threading
-import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Any, Callable, Generic, Iterable, Optional, TypeVar, Union
+from typing import Any, Callable, Generic, Iterable, Optional, TypeVar
 
 from ..llm.backend import DecodingConfig
 
@@ -344,7 +343,7 @@ class APIFuture(Generic[T]):
             self._run_finally_callbacks()
             return True
     
-    def cancelled(self) -> bool:  # type: ignore
+    def cancelled(self) -> bool:  # type: ignore  # noqa: F811
         """Check if the future was cancelled."""
         with self._lock:
             return self._state == APIFutureState.CANCELLED

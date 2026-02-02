@@ -22,7 +22,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional
 
 from .future import APIFuture, SdkFuturePool
 
@@ -194,7 +194,7 @@ class TrainingClient:
             if batch.is_preference:
                 # Preference training (DPO, ORPO, etc.)
                 if batch.rejected_responses is None:
-                    raise ValueError(f"Preference batch requires rejected_responses")
+                    raise ValueError("Preference batch requires rejected_responses")
                 
                 for prompt, chosen, rejected in zip(
                     batch.prompts, 
@@ -345,7 +345,6 @@ class TrainingClient:
         def _run_save() -> CheckpointResult:
             try:
                 from pathlib import Path
-                import json
                 
                 save_path = Path(path)
                 save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -673,4 +672,4 @@ class DistillationTrainingClient(TrainingClient):
 
 
 # Import at end to avoid circular dependency
-from .sampling_client import SamplingClient
+from .sampling_client import SamplingClient  # noqa: E402

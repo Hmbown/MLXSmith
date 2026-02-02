@@ -18,7 +18,6 @@ Config files support @path syntax:
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -94,7 +93,7 @@ class ProjectSettings(BaseSettings):
 
 
 # Import CLI aliases from models
-from .config_models import CLI_ALIASES as _CLI_ALIASES
+from .config_models import CLI_ALIASES as _CLI_ALIASES  # noqa: E402
 
 
 def resolve_config_path(config: Union[str, Path], root: Optional[Path] = None) -> Path:
