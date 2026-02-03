@@ -15,6 +15,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+from . import __version__
 from .config import ProjectConfig
 from .models import resolve_model_spec
 from .llm.registry import get_llm_backend
@@ -325,7 +326,7 @@ def create_app(model_spec: str, cfg: ProjectConfig) -> FastAPI:
     app = FastAPI(
         title="mlxsmith",
         description="MLXSmith API server for local LLM inference and RLM training",
-        version="0.1.6",
+        version=__version__,
     )
     
     # Load LLM backend

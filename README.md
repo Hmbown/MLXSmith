@@ -6,7 +6,7 @@
 
 Fine-tune language models on Apple Silicon. SFT, preference optimization, reinforcement learning, distillation, and serving — all native to MLX.
 
-**Status:** Alpha (v0.1.6) · Validated on Qwen3-4B
+**Status:** Alpha (v0.1.7) · Validated on Qwen3-4B
 
 ---
 

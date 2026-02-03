@@ -25,6 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from .. import __version__
 from .schemas import (
     AdapterReloadRequest,
     AdapterReloadResponse,
@@ -262,7 +263,7 @@ def create_router(
         """Health check endpoint."""
         return HealthResponse(
             ok=True,
-            version="0.1.6",
+            version=__version__,
             model=base_model,
         )
     
