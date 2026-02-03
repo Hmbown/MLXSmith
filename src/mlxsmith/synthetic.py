@@ -105,6 +105,19 @@ def _extract_generated_prompt(text: str, prefix: str, markers: Iterable[str]) ->
     return _strip_leading_marker(cleaned.strip())
 
 
+def _read_text_value(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    if value.startswith("@"):
+        path = Path(value[1:])
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+    path = Path(value)
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return value
+
+
 _EVOLVE_SYSTEM = (
     "You are a prompt engineer. Transform the base prompt into a new, higher-quality instruction. "
     "Return only the evolved prompt text, with no commentary."
@@ -146,7 +159,7 @@ def generate_prompts(
             raise RuntimeError(f"Seed prompts file not found: {seed_prompts}")
         seeds = _read_prompts(seed_prompts)
 
-    sys_prompt = system_prompt or _DEFAULT_PROMPT_SYSTEM
+    sys_prompt = _read_text_value(system_prompt) or _DEFAULT_PROMPT_SYSTEM
     written = 0
     out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -206,7 +219,7 @@ def generate_evolved_prompts(
     written = 0
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    sys_prompt = system_prompt or _EVOLVE_SYSTEM
+    sys_prompt = _read_text_value(system_prompt) or _EVOLVE_SYSTEM
     modes = list(_EVOLVE_MODES)
     if mode != "mix" and mode not in _EVOLVE_MODES:
         raise RuntimeError(f"Unknown evolve mode: {mode}. Choose from {', '.join(['mix'] + modes)}")

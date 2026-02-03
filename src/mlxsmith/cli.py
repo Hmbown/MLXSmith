@@ -1045,6 +1045,227 @@ def rlm_history(limit: int = typer.Option(10, "--limit")):
         console.print(line)
 
 
+@rlm_app.command("infer")
+def rlm_infer(
+    context: str = typer.Argument(..., help="Context text or path to file"),
+    model: str = typer.Option(None, "--model", help="Model path or id"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
+    max_turns: Optional[int] = typer.Option(None, "--max-turns", help="Override rlm.repl_max_turns"),
+    temperature: Optional[float] = typer.Option(None, "--temperature", help="Override rlm.repl_temperature"),
+    sandbox: Optional[str] = typer.Option(None, "--sandbox", help="Override rlm.repl_sandbox (local|docker)"),
+    out: Optional[str] = typer.Option(None, "--out", help="Save trajectory to file"),
+):
+    """Run RLM inference with REPL environment.
+
+    The model interacts with a Python REPL, executing code, making sub-calls
+    via llm_query(), and signaling completion via FINAL().
+
+    Example:
+        mlxsmith rlm infer "Summarize this document..." --model qwen3
+        mlxsmith rlm infer @input.txt --out trajectory.json
+    """
+    from .rlm import run_rlm_inference, RLMInferenceConfig, save_trajectory
+    from .models import resolve_model_spec
+    from .llm.registry import get_llm_backend
+
+    root = project_root_from_cwd()
+    cfg = get_config(config_path=config, root=root, model_id=model)
+
+    # Load context from file if starts with @
+    if context.startswith("@"):
+        context_path = Path(context[1:])
+        if not context_path.is_absolute():
+            context_path = root / context_path
+        context = context_path.read_text(encoding="utf-8")
+
+    # Load model
+    model_id = model or cfg.model.id
+    base_model, adapter_path, _meta = resolve_model_spec(root, model_id, cfg)
+    backend = get_llm_backend(str(cfg.model.backend))
+    backend.load(
+        base_model,
+        max_seq_len=cfg.model.max_seq_len or None,
+        dtype=cfg.model.dtype,
+        trust_remote_code=cfg.model.trust_remote_code,
+    )
+    if adapter_path:
+        backend.apply_adapter(str(adapter_path))
+
+    max_turns_final = max_turns if max_turns is not None else cfg.rlm.repl_max_turns
+    temperature_final = temperature if temperature is not None else cfg.rlm.repl_temperature
+    sandbox_final = sandbox or cfg.rlm.repl_sandbox
+
+    # Configure inference
+    infer_config = RLMInferenceConfig(
+        max_turns=max_turns_final,
+        temperature=temperature_final,
+        sandbox=sandbox_final,
+        max_new_tokens_per_turn=cfg.rlm.repl_max_tokens_per_turn,
+        max_output_chars=cfg.rlm.repl_max_output_chars,
+        max_exec_iterations=cfg.rlm.repl_max_exec_iterations,
+        timeout_per_exec_s=cfg.rlm.repl_timeout_per_exec_s,
+        sub_call_max_tokens=cfg.rlm.repl_sub_call_max_tokens,
+        sub_call_temperature=cfg.rlm.repl_sub_call_temperature,
+        docker_image=cfg.rlm.docker_image,
+        docker_memory_mb=cfg.rlm.docker_memory_mb,
+        docker_cpus=cfg.rlm.docker_cpus,
+        docker_pids=cfg.rlm.docker_pids,
+    )
+
+    console.print(f"[cyan]Running RLM inference with {sandbox_final} sandbox...[/cyan]")
+
+    # Run inference
+    trajectory = run_rlm_inference(
+        backend,
+        context,
+        config=infer_config,
+        system_prompt=cfg.rlm.repl_system_prompt,
+    )
+
+    # Display results
+    console.print(f"\n[bold]Turns:[/bold] {len(trajectory.turns)}")
+    console.print(f"[bold]Sub-calls:[/bold] {trajectory.sub_calls}")
+    console.print(f"[bold]Duration:[/bold] {trajectory.duration_ms:.1f}ms")
+    console.print(f"[bold]Success:[/bold] {'yes' if trajectory.success else 'no'}")
+
+    if trajectory.final_answer:
+        console.print("\n[bold green]Final Answer:[/bold green]")
+        console.print(trajectory.final_answer[:2000])
+        if len(trajectory.final_answer) > 2000:
+            console.print("... (truncated)")
+
+    # Save trajectory if requested
+    if out:
+        out_path = Path(out)
+        if not out_path.is_absolute():
+            out_path = root / out_path
+        save_trajectory(trajectory, out_path)
+        console.print(f"\n[green]Saved trajectory to {out_path}[/green]")
+
+
+@rlm_app.command("collect")
+def rlm_collect(
+    prompts: str = typer.Argument(..., help="JSONL file with prompts"),
+    model: str = typer.Option(None, "--model", help="Model path or id"),
+    config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
+    out: str = typer.Option("data/rlm_trajectories", "--out", help="Output directory"),
+    max_prompts: int = typer.Option(100, "--max-prompts", help="Maximum prompts to process"),
+    sandbox: Optional[str] = typer.Option(None, "--sandbox", help="Override rlm.repl_sandbox (local|docker)"),
+    max_turns: Optional[int] = typer.Option(None, "--max-turns", help="Override rlm.repl_max_turns"),
+    temperature: Optional[float] = typer.Option(None, "--temperature", help="Override rlm.repl_temperature"),
+):
+    """Collect RLM trajectories for training.
+
+    Runs RLM inference on multiple prompts and saves successful trajectories.
+
+    Example:
+        mlxsmith rlm collect data/prompts.jsonl --out data/rlm_trajectories
+    """
+    from .rlm import run_rlm_inference, RLMInferenceConfig, save_trajectory, trajectory_to_training_pairs
+    from .util import write_jsonl
+    from .models import resolve_model_spec
+    from .llm.registry import get_llm_backend
+
+    root = project_root_from_cwd()
+    cfg = get_config(config_path=config, root=root, model_id=model)
+
+    # Load prompts
+    prompts_path = Path(prompts)
+    if not prompts_path.is_absolute():
+        prompts_path = root / prompts_path
+    prompt_lines = prompts_path.read_text(encoding="utf-8").splitlines()
+
+    contexts = []
+    for line in prompt_lines[:max_prompts]:
+        if not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ctx = data.get("context") or data.get("prompt") or data.get("text", "")
+        if ctx:
+            contexts.append(ctx)
+
+    # Load model
+    model_id = model or cfg.model.id
+    base_model, adapter_path, _meta = resolve_model_spec(root, model_id, cfg)
+    backend = get_llm_backend(str(cfg.model.backend))
+    backend.load(
+        base_model,
+        max_seq_len=cfg.model.max_seq_len or None,
+        dtype=cfg.model.dtype,
+        trust_remote_code=cfg.model.trust_remote_code,
+    )
+    if adapter_path:
+        backend.apply_adapter(str(adapter_path))
+
+    sandbox_final = sandbox or cfg.rlm.repl_sandbox
+    max_turns_final = max_turns if max_turns is not None else cfg.rlm.repl_max_turns
+    temperature_final = temperature if temperature is not None else cfg.rlm.repl_temperature
+
+    # Configure inference
+    infer_config = RLMInferenceConfig(
+        sandbox=sandbox_final,
+        max_turns=max_turns_final,
+        temperature=temperature_final,
+        max_new_tokens_per_turn=cfg.rlm.repl_max_tokens_per_turn,
+        max_output_chars=cfg.rlm.repl_max_output_chars,
+        max_exec_iterations=cfg.rlm.repl_max_exec_iterations,
+        timeout_per_exec_s=cfg.rlm.repl_timeout_per_exec_s,
+        sub_call_max_tokens=cfg.rlm.repl_sub_call_max_tokens,
+        sub_call_temperature=cfg.rlm.repl_sub_call_temperature,
+        docker_image=cfg.rlm.docker_image,
+        docker_memory_mb=cfg.rlm.docker_memory_mb,
+        docker_cpus=cfg.rlm.docker_cpus,
+        docker_pids=cfg.rlm.docker_pids,
+    )
+
+    # Create output directory
+    out_path = Path(out)
+    if not out_path.is_absolute():
+        out_path = root / out_path
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    # Collect trajectories
+    training_pairs = []
+    successful = 0
+
+    for idx, ctx in enumerate(contexts):
+        console.print(f"[{idx+1}/{len(contexts)}] Processing...")
+        try:
+            trajectory = run_rlm_inference(
+                backend,
+                ctx,
+                config=infer_config,
+                system_prompt=cfg.rlm.repl_system_prompt,
+            )
+
+            if trajectory.success:
+                # Save trajectory
+                traj_path = out_path / f"trajectory_{idx:04d}.json"
+                save_trajectory(trajectory, traj_path)
+
+                # Extract training pairs
+                pairs = trajectory_to_training_pairs(trajectory)
+                training_pairs.extend(pairs)
+                successful += 1
+                console.print(f"  [green]Success[/green] - {len(pairs)} training pairs")
+            else:
+                console.print(f"  [yellow]No final answer[/yellow]")
+
+        except Exception as e:
+            console.print(f"  [red]Error: {e}[/red]")
+
+    # Save training pairs
+    if training_pairs:
+        pairs_path = out_path / "training_pairs.jsonl"
+        write_jsonl(pairs_path, training_pairs)
+        console.print(f"\n[green]Saved {len(training_pairs)} training pairs to {pairs_path}[/green]")
+
+    console.print(f"\n[bold]Summary:[/bold] {successful}/{len(contexts)} successful trajectories")
+
+
 @accel_app.command("status")
 def accel_status():
     backends = ["none"]

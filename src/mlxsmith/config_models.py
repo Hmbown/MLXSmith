@@ -250,7 +250,7 @@ class RlmConfig(BaseModel):
         ]
     )
 
-    # Recursive inference (long-context compression)
+    # Recursive inference (long-context compression) - legacy mode
     recursive_inference: bool = False
     recursive_max_depth: int = 3
     recursive_chunk_tokens: int = 1024
@@ -259,6 +259,20 @@ class RlmConfig(BaseModel):
     recursive_summary_tokens: int = 256
     recursive_temperature: float = 0.2
     recursive_summary_prompt: Optional[str] = None
+
+    # RLM REPL inference (canonical RLM paradigm from Zhang et al.)
+    # When enabled, model interacts with Python REPL during generation
+    repl_inference: bool = False
+    repl_max_turns: int = 20
+    repl_max_tokens_per_turn: int = 1024
+    repl_temperature: float = 0.7
+    repl_max_output_chars: int = 4000
+    repl_max_exec_iterations: int = 50
+    repl_timeout_per_exec_s: float = 30.0
+    repl_sub_call_max_tokens: int = 512
+    repl_sub_call_temperature: float = 0.3
+    repl_sandbox: Literal["local", "docker"] = "local"
+    repl_system_prompt: Optional[str] = None
 
     @field_validator(
         "recursive_max_depth",
@@ -273,9 +287,29 @@ class RlmConfig(BaseModel):
             raise ValueError("value must be non-negative")
         return v
 
+    @field_validator(
+        "repl_max_turns",
+        "repl_max_tokens_per_turn",
+        "repl_max_output_chars",
+        "repl_max_exec_iterations",
+        "repl_sub_call_max_tokens",
+    )
+    @classmethod
+    def validate_positive_int(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("value must be positive")
+        return v
+
     @field_validator("recursive_temperature")
     @classmethod
     def validate_non_negative_float(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("value must be non-negative")
+        return v
+
+    @field_validator("repl_temperature", "repl_timeout_per_exec_s", "repl_sub_call_temperature")
+    @classmethod
+    def validate_non_negative_float_repl(cls, v: float) -> float:
         if v < 0:
             raise ValueError("value must be non-negative")
         return v

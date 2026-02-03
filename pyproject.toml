@@ -75,6 +75,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+norecursedirs = ["runs", "cache", "models", "data", "envs", "bench"]
 filterwarnings = [
   "ignore:Failed to load config file:UserWarning:mlxsmith.config",
 ]

@@ -20,6 +20,7 @@ Fine-tune language models on Apple Silicon. SFT, preference optimization, reinfo
 - **Online DPO** — Live preference tuning with LLM judge scoring
 - **Self-verification training** — Policy gradient from self-assessed rewards
 - **Synthetic data generation** — Generate, evolve, and filter training data
+- **External model backends** — Use Codex, Claude, Gemini CLIs or any OpenAI-compatible API for data generation and judging
 - **Recursive training** — Self-improving RLM loop with task generation and gating
 - **Serving** — OpenAI-compatible API with streaming
 - **Environment plugins** — Reusable task and verifier packages for RL training
@@ -104,7 +105,57 @@ See [Concepts](docs/concepts.md) for an explanation of each training mode.
 | [Eval](docs/cli/eval-and-bench.md) | `mlxsmith eval` | Run evaluation suites with pass@k |
 | [Bench](docs/cli/eval-and-bench.md) | `mlxsmith bench` | Benchmark inference and training throughput |
 | [Serve](docs/cli/serving.md) | `mlxsmith serve` | OpenAI-compatible model server |
-| [RLM](docs/cli/rlm.md) | `mlxsmith rlm` | Recursive self-improving training loop |
+| [RLM](docs/cli/rlm.md) | `mlxsmith rlm` | Recursive training loop + REPL-based inference |
+
+## External Model Backends
+
+MLXSmith can use powerful cloud models for synthetic data generation and judging while keeping fine-tuning local on Apple Silicon.
+
+Supported backends:
+
+- `cli` — shell out to Codex/Claude/Gemini CLIs (or any command you provide)
+- `openai` — call any OpenAI-compatible Chat Completions endpoint
+
+Note: training commands (`sft`, `pref`, `rft`, `rlm` loop) still require a local training backend like `mlx-lm`.
+
+**CLI Backend** — Shell out to Codex, Claude, or Gemini CLIs:
+
+```bash
+# Use a CLI model for prompt generation
+export MLXSMITH__MODEL__BACKEND=cli
+export MLXSMITH_CLI_CODEX_CMD='codex exec --full-auto --model gpt-5.2'
+
+# If your CLI expects the prompt as an argument instead of stdin:
+# export MLXSMITH_CLI_PROMPT_FLAG='--prompt'
+
+mlxsmith synthetic prompts \
+  --model codex \
+  --seed-prompts data/seeds.jsonl \
+  --num 100 \
+  --out data/prompts.jsonl
+
+# Use a CLI model as judge for filtering
+mlxsmith synthetic sft \
+  --model codex \
+  --judge-backend cli \
+  --judge-model claude \
+  --prompts data/prompts.jsonl \
+  --out data/sft.jsonl
+```
+
+**OpenAI Backend** — Use any OpenAI-compatible API:
+
+```bash
+export MLXSMITH__MODEL__BACKEND=openai
+export OPENAI_API_KEY="sk-..."
+export MLXSMITH_API_BASE="https://api.openai.com/v1"  # or any compatible endpoint
+
+mlxsmith synthetic prompts \
+  --model gpt-4o \
+  --out data/prompts.jsonl
+```
+
+This enables cloud-quality data generation with local training — use frontier models to create and filter training data, then fine-tune efficiently on your Mac.
 
 ## Documentation
 

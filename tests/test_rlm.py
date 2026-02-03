@@ -2,6 +2,7 @@ from pathlib import Path
 
 from mlxsmith.config import ProjectConfig
 import socket
+import pytest
 
 from mlxsmith.rlm.loop import run_rlm, run_rlm_orchestrated
 
@@ -39,9 +40,13 @@ def test_rlm_orchestrated_smoke(tmp_path: Path):
     cfg.rlm.holdout_suite = None
     cfg.rlm.verifier_timeout_s = 5
     sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    cfg.serve.port = sock.getsockname()[1]
-    sock.close()
+    try:
+        sock.bind(("127.0.0.1", 0))
+        cfg.serve.port = sock.getsockname()[1]
+    except PermissionError:
+        pytest.skip("Socket bind not permitted in this environment")
+    finally:
+        sock.close()
 
     run_rlm_orchestrated(tmp_path, cfg, model_spec="dummy/model", iterations=1, resume=False)
 

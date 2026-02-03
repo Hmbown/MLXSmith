@@ -48,3 +48,6 @@ verifiers/rubrics/
 
 # OS
 .DS_Store
+
+# Local logs
+firebase-debug.log
