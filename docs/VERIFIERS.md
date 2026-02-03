@@ -75,7 +75,7 @@ Use `llm_judge.py` to score completions with a judge model. Example task:
 
 ```yaml
 verifier_kwargs:
-  model: mlx-community/Qwen2.5-3B-Instruct-4bit
+  model: mlx-community/Qwen3-4B-Instruct-2507-4bit
   mode: thinkprm
   rubric: "@verifiers/rubrics/coding.txt"
   min_score: 0.6

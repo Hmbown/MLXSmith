@@ -18,7 +18,7 @@ These versions reflect upstream releases available as of **late January 2026**.
 
 Use the official conversion tool:
 
-```
+```bash
 mlx_lm.convert --hf-path <hf_repo_or_local> --mlx-path <mlx_output_dir> [--quantize]
 ```
 
@@ -30,7 +30,7 @@ This repo’s `mlxsmith pull` wraps that flow and can pass quantization options
 As of Jan 2026, mlxsmith is designed to work with common decoder-only LMs that
 convert via `mlx_lm.convert`, including:
 
-- Qwen3 (verified with Qwen/Qwen3-4B-Instruct-2507)
+- Qwen3 (verified with mlx-community/Qwen3-4B-Instruct-2507-4bit)
 - Llama 3.x
 - Mistral
 
@@ -44,13 +44,13 @@ convert via `mlx_lm.convert`, including:
 
 Use the built-in checker:
 
-```
+```bash
 mlxsmith doctor
 ```
 
 To inspect Python package versions:
 
-```
+```bash
 python -m pip show mlx mlx-lm transformers huggingface-hub
 ```
 
@@ -59,12 +59,12 @@ is supported for non-MLX workflows (e.g., mock backend, docs, and tooling).
 
 ## Sources (Jan 2026)
 
-- https://ml-explore.github.io/mlx/build/html/install.html
-- https://github.com/ml-explore/mlx-examples/tree/main/llms
-- https://github.com/ml-explore/mlx-lm/blob/main/README.md
-- https://github.com/ml-explore/mlx/releases
-- https://pypi.org/project/mlx/
-- https://pypi.org/project/mlx-lm/
-- https://pypi.org/project/transformers/
-- https://pypi.org/project/huggingface-hub/
-- https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507
+- [MLX install docs](https://ml-explore.github.io/mlx/build/html/install.html)
+- [MLX examples (LLMs)](https://github.com/ml-explore/mlx-examples/tree/main/llms)
+- [mlx-lm README](https://github.com/ml-explore/mlx-lm/blob/main/README.md)
+- [MLX releases](https://github.com/ml-explore/mlx/releases)
+- [PyPI: mlx](https://pypi.org/project/mlx/)
+- [PyPI: mlx-lm](https://pypi.org/project/mlx-lm/)
+- [PyPI: transformers](https://pypi.org/project/transformers/)
+- [PyPI: huggingface-hub](https://pypi.org/project/huggingface-hub/)
+- [Qwen3 4B model card](https://huggingface.co/mlx-community/Qwen3-4B-Instruct-2507-4bit)

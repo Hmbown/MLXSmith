@@ -10,7 +10,7 @@ The orchestrator provides PrimeIntellect-style multi-process coordination for RL
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Orchestrator Daemon                          │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
@@ -67,7 +67,7 @@ Runs as a separate process with:
 from mlxsmith.orchestrator import InferenceWorker, InferenceConfig
 
 config = InferenceConfig(
-    model_spec="mlx-community/Llama-3.2-3B-Instruct-4bit",
+    model_spec="mlx-community/Qwen3-4B-Instruct-2507-4bit",
     host="0.0.0.0",
     port=8080,
     weights_dir=Path("runs/rlm_weights"),
@@ -89,8 +89,8 @@ Consumes training batches and:
 from mlxsmith.orchestrator import TrainerWorker, TrainerConfig
 
 config = TrainerConfig(
-    model_spec="mlx-community/Llama-3.2-3B-Instruct-4bit",
-    base_model="mlx-community/Llama-3.2-3B-Instruct-4bit",
+    model_spec="mlx-community/Qwen3-4B-Instruct-2507-4bit",
+    base_model="mlx-community/Qwen3-4B-Instruct-2507-4bit",
     weights_dir=Path("runs/rlm_weights"),
     checkpoint_dir=Path("runs/rlm_checkpoints"),
 )
@@ -134,7 +134,7 @@ store = WeightPointerStore(Path("runs/rlm_weights"))
 
 # Trainer updates weights
 pointer = WeightPointerIPC(
-    base_model="mlx-community/Llama-3.2-3B-Instruct-4bit",
+    base_model="mlx-community/Qwen3-4B-Instruct-2507-4bit",
     adapter_path="runs/rlm_checkpoints/iter_0005",
     iteration=5,
     updated_at=now_ts(),
@@ -163,7 +163,7 @@ mlxsmith rlm --iterations 50
 mlxsmith rlm --orchestrated --iterations 50
 
 # With specific model
-mlxsmith rlm --orchestrated --model mlx-community/Llama-3.2-3B-Instruct-4bit --iterations 100
+mlxsmith rlm --orchestrated --model mlx-community/Qwen3-4B-Instruct-2507-4bit --iterations 100
 ```
 
 ### Programmatic
@@ -178,7 +178,7 @@ cfg = load_config(Path("mlxsmith.yaml"))
 run_rlm_orchestrated(
     project_root=Path("."),
     cfg=cfg,
-    model_spec="mlx-community/Llama-3.2-3B-Instruct-4bit",
+    model_spec="mlx-community/Qwen3-4B-Instruct-2507-4bit",
     iterations=50,
     resume=False,
 )
@@ -189,30 +189,30 @@ run_rlm_orchestrated(
 ### RLM Iteration
 
 1. **Task Generation** (Main Process)
-   ```
+   ```text
    Main → LLM.generate_tasks() → tasks
    ```
 
 2. **Rollout Collection** (Inference Worker via API)
-   ```
+   ```text
    Main → HTTP POST /internal/rollout → Inference Worker
    Inference → generate_with_logprobs() → response
    Main ← response ← Inference Worker
    ```
 
 3. **Training** (Trainer Worker via API in current impl)
-   ```
+   ```text
    Main → train_on_rollouts() → adapter saved
    ```
 
 4. **Weight Update** (Weight Pointer)
-   ```
+   ```text
    Main → WeightPointerStore.save() → disk
    Inference → WeightPointerStore.load() (poll) → hot reload
    ```
 
 5. **Evaluation** (via API)
-   ```
+   ```text
    Main → run_eval() → score
    ```
 

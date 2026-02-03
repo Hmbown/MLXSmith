@@ -118,7 +118,7 @@ Add a simple OpenAPI spec in `docs/api/openapi.yaml` for:
    duplicating logic in Swift.
 
 ### Suggested structure
-```
+```text
 apps/
   web/          # Next.js or Svelte
   macos/        # SwiftUI

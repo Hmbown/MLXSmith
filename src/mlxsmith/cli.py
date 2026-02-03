@@ -738,7 +738,7 @@ def judge(
         iters=iters,
     )
     data_dir = root / data
-    run = run_sft(root, cfg, data_dir, model, cfg.accel.backend)
+    run = run_sft(root, cfg, data_dir, model, cfg.accel.backend, run_kind="judge")
     console.print(f"[bold]Judge run:[/bold] {run.run_dir}")
 
 

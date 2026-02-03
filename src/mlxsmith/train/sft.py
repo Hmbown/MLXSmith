@@ -33,13 +33,22 @@ def _row_to_prompt_response(row: dict) -> tuple[str, str]:
     return prompt, response
 
 
-def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_path: str, accel: str) -> RunPaths:
-    run = new_run(project_root, "sft")
+def run_sft(
+    project_root: Path,
+    cfg: ProjectConfig,
+    data_dir: Path,
+    model_id_or_path: str,
+    accel: str,
+    run_kind: str = "sft",
+    metrics_kind: str | None = None,
+) -> RunPaths:
+    run = new_run(project_root, run_kind)
     snapshot_config(cfg.model_dump(), run.config_snapshot_path)
 
     backend = get_backend(accel)
     backend.patch()
-    console.print(f"[bold]SFT[/bold] run: {run.run_dir.name}  accel={backend.name}")
+    label = (run_kind if run_kind else "sft").upper()
+    console.print(f"[bold]{label}[/bold] run: {run.run_dir.name}  accel={backend.name}")
 
     train_path = data_dir / "train.jsonl"
     if not train_path.exists():
@@ -96,6 +105,8 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
     accum_loss = 0.0
     accum_count = 0
 
+    metrics_kind = metrics_kind or run_kind or "sft"
+
     for step in range(1, total + 1):
         row = rng.choice(rows)
         prompt, response = _row_to_prompt_response(row)
@@ -140,7 +151,7 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
                     {
                         "ts": now_ts(),
                         "step": step,
-                        "kind": "sft",
+                        "kind": metrics_kind,
                         "loss": avg_loss,
                         "accel": backend.name,
                     }
@@ -154,7 +165,7 @@ def run_sft(project_root: Path, cfg: ProjectConfig, data_dir: Path, model_id_or_
                     "base_model": base_model,
                     "source_adapter": str(adapter_path) if adapter_path else None,
                     "run": run.run_dir.name,
-                    "kind": "sft",
+                    "kind": metrics_kind,
                 },
             )
 

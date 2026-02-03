@@ -3,30 +3,30 @@ info:
   title: MLXSmith API
   description: |
     MLXSmith API server for local LLM inference and RLM training.
-    
+
     This API provides:
     - OpenAI-compatible chat completions with streaming support
     - Internal endpoints for RLM training (rollouts with logprobs)
     - Adapter hot-reload for continuous training
     - Model management (list cached models, pull from HF)
     - HuggingFace token storage
-    
+
     ## Authentication
-    
+
     Public endpoints (`/health`, `/v1/chat/completions`) do not require authentication.
-    
+
     Internal endpoints (`/internal/*`) require an API token via Bearer authentication:
     ```
     Authorization: Bearer YOUR_API_TOKEN
     ```
-    
+
     Set the token via environment variable:
     ```bash
     export MLXSMITH_API_TOKEN=your-secret-token
     ```
-    
+
     ## Streaming
-    
+
     Chat completions support streaming via Server-Sent Events (SSE).
     Set `stream: true` in the request to enable streaming.
   version: 0.1.0
@@ -63,7 +63,7 @@ paths:
               example:
                 ok: true
                 version: "0.1.0"
-                model: "mlx-community/Llama-3.2-1B-Instruct-4bit"
+                model: "mlx-community/Qwen3-4B-Instruct-2507-4bit"
 
   # ============================================================================
   # Chat Completions (OpenAI-compatible)
@@ -75,7 +75,7 @@ paths:
       description: |
         OpenAI-compatible chat completions endpoint. Supports both streaming
         and non-streaming responses.
-        
+
         For streaming, set `stream: true` and consume the SSE response.
       tags:
         - Chat
@@ -87,7 +87,7 @@ paths:
             schema:
               $ref: '#/components/schemas/ChatRequest'
             example:
-              model: "mlx-community/Llama-3.2-1B-Instruct-4bit"
+              model: "mlx-community/Qwen3-4B-Instruct-2507-4bit"
               messages:
                 - role: "user"
                   content: "Hello, how are you?"
@@ -120,7 +120,7 @@ paths:
       description: |
         Internal rollout endpoint for RLM training. Returns generated tokens
         along with per-token log probabilities.
-        
+
         This is used by the RLM training loop to generate rollouts for
         reward computation and policy updates.
       tags:
@@ -161,7 +161,7 @@ paths:
       summary: Hot-reload adapter weights
       description: |
         Reload adapter weights without restarting the server.
-        
+
         Can optionally reload the base model first (if `reload_base: true`).
         If no adapter path is provided, unloads the current adapter.
       tags:
@@ -245,7 +245,7 @@ paths:
       summary: Get RLM training history
       description: |
         Returns historical training metrics from the RLM loop.
-        
+
         Use `limit` and `offset` for pagination.
       tags:
         - RLM
@@ -286,7 +286,7 @@ paths:
       summary: List cached models
       description: |
         Returns a list of cached MLX models in the cache directory.
-        
+
         Models are detected in both the `mlx/` and `hf/` subdirectories
         of the cache directory.
       tags:
@@ -307,7 +307,7 @@ paths:
       summary: Pull a model from HuggingFace
       description: |
         Pulls a model from HuggingFace Hub and optionally converts it to MLX format.
-        
+
         This proxies the `mlxsmith pull` CLI command. For large models,
         the operation may take several minutes. The response indicates
         whether the pull was initiated successfully.
@@ -320,7 +320,7 @@ paths:
             schema:
               $ref: '#/components/schemas/ModelPullRequest'
             example:
-              model_id: "mlx-community/Llama-3.2-1B-Instruct-4bit"
+              model_id: "mlx-community/Qwen3-4B-Instruct-2507-4bit"
               convert: true
               quantize: false
       responses:
@@ -346,7 +346,7 @@ paths:
       summary: Store HuggingFace token
       description: |
         Stores a HuggingFace API token securely.
-        
+
         The token is validated before storage if `validate: true`.
         Storage uses the system keyring if available, otherwise falls
         back to file-based storage with restricted permissions.

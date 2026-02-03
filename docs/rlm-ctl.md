@@ -21,7 +21,7 @@ called out in the partial status table below.
 An RLM training loop has five stages. Each stage maps to specific MLXSmith
 capabilities.
 
-```
+```text
  1. Task Generation     Model produces coding/reasoning tasks
  2. Rollout Collection  Model generates N candidate solutions per task
  3. Verification        Grade each solution (pass/fail, partial reward)
@@ -321,7 +321,7 @@ After N iterations, merge accumulated LoRA weights into the base model:
 
 ## Proposed directory structure
 
-```
+```text
 src/mlxsmith/
   rlm/
     __init__.py

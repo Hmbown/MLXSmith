@@ -1,253 +1,127 @@
-# mlxsmith
+# MLXSmith
 
-Apple Silicon MLX fine-tuning toolkit — SFT, DPO/ORPO, GRPO, distillation, and OpenAI-compatible serving.
+[![PyPI](https://img.shields.io/pypi/v/mlxsmith)](https://pypi.org/project/mlxsmith/)
+[![CI](https://github.com/Hmbown/MLXSmith/actions/workflows/ci.yml/badge.svg)](https://github.com/Hmbown/MLXSmith/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/Hmbown/MLXSmith)](LICENSE)
 
-**Status:** alpha (v0.1.6). Full training pipeline validated on Qwen3-4B.
+Fine-tune language models on Apple Silicon. SFT, preference optimization, reinforcement learning, distillation, and serving — all native to MLX.
+
+**Status:** Alpha (v0.1.6) · Validated on Qwen3-4B
+
+---
+
+## Features
+
+- **Supervised fine-tuning** — LoRA and QLoRA with configurable optimizers
+- **Preference optimization** — DPO, ORPO, IPO, CPO, SimPO, and more
+- **Reinforcement learning** — GRPO with verifier-based rewards
+- **Knowledge distillation** — Offline and online preference distillation
+- **KTO** — Kahneman-Tversky Optimization from binary feedback
+- **Online DPO** — Live preference tuning with LLM judge scoring
+- **Self-verification training** — Policy gradient from self-assessed rewards
+- **Synthetic data generation** — Generate, evolve, and filter training data
+- **Recursive training** — Self-improving RLM loop with task generation and gating
+- **Serving** — OpenAI-compatible API with streaming
+- **Environment plugins** — Reusable task and verifier packages for RL training
+
+## Requirements
+
+- macOS with Apple Silicon (M1 or later)
+- Python 3.10+
+
+Data tools, configuration, and project scaffolding work on any platform.
 
 ## Install
 
-MLX training and serving require macOS on Apple Silicon.
-Other platforms can use data tools and mock backends.
-
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -U pip
-
-# Core CLI (data tools, config, project scaffolding)
-pip install mlxsmith
-
-# Apple Silicon training + serving
-pip install "mlxsmith[mlx,llm,serve]"
-
-# Everything
 pip install "mlxsmith[all]"
 ```
+
+<details>
+<summary>Selective install</summary>
+
+```bash
+# Core only (data tools, config, scaffolding)
+pip install mlxsmith
+
+# Apple Silicon training
+pip install "mlxsmith[mlx,llm]"
+
+# Training + serving
+pip install "mlxsmith[mlx,llm,serve]"
+```
+
+</details>
 
 ## Quickstart
 
 ```bash
-mlxsmith init myproj
-cd myproj
-mlxsmith doctor        # check Python, MLX, Metal
-```
+# 1. Create a project
+mlxsmith init myproj && cd myproj
 
-## Training
+# 2. Verify your environment
+mlxsmith doctor
 
-### SFT (LoRA/QLoRA)
+# 3. Pull a model
+mlxsmith pull mlx-community/Qwen3-4B-Instruct-2507-4bit
 
-```bash
-mlxsmith sft --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 --data data/sft
-```
+# 4. Pull training data
+mlxsmith data pull --preset alpaca
 
-Produces run artifacts under `runs/sft_NNNN/` (adapter weights, `metrics.jsonl`, config snapshot).
+# 5. Fine-tune
+mlxsmith sft \
+  --model cache/mlx/mlx-community__Qwen3-4B-Instruct-2507-4bit \
+  --data data/sft
 
-### Preference tuning (DPO/ORPO)
-
-```bash
-mlxsmith pref --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 \
-  --data data/prefs --algo dpo
-```
-
-Supports DPO and ORPO algorithms with configurable beta and KL coefficients. Expects `{prompt, chosen, rejected}` data format.
-
-### KTO (binary feedback)
-
-```bash
-mlxsmith kto --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 --data data/kto.jsonl
-```
-
-Expects JSONL rows with `{prompt, response, label}` (label can be boolean or 0/1).
-
-### Reinforced fine-tuning (GRPO)
-
-```bash
-mlxsmith rft --model cache/mlx/Qwen__Qwen3-4B-Instruct-2507 \
-  --env envs/coding.yaml --verifier verifiers/pytest.py
-```
-
-GRPO-style RL training with token-level environment integration and verifier-based rewards. Rollout acceptance/rejection gating with reward tracking.
-
-### Knowledge distillation
-
-```bash
-# Offline distillation (teacher generates, student learns)
-mlxsmith distill --teacher large-model --student small-model --mode offline
-
-# Online preference distillation (OPD)
-mlxsmith distill --teacher large-model --student small-model --mode opd
-```
-
-### Full pipeline
-
-```bash
-# Run SFT → Pref → RFT in sequence
-mlxsmith pipeline
-```
-
-### Synthetic data
-
-```bash
-# Generate prompts
-mlxsmith synthetic prompts --model mlx-community/Qwen3-4B-Instruct-2507-4bit --num 1000
-
-# Evol-Instruct style prompt evolution
-mlxsmith synthetic evolve --model mlx-community/Qwen3-4B-Instruct-2507-4bit --seeds data/prompts.jsonl
-
-# Rejection-sampled SFT
-mlxsmith synthetic sft --model mlx-community/Qwen3-4B-Instruct-2507-4bit --prompts data/prompts.jsonl \
-  --candidates 4 --judge-model mlx-community/Qwen3-4B-Instruct-2507-4bit
-```
-
-## Serving
-
-OpenAI-compatible `/v1/chat/completions` endpoint.
-
-```bash
+# 6. Serve the result
 mlxsmith serve --model runs/sft_0001/adapter --port 8080
 ```
 
-```bash
-curl http://localhost:8080/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"messages":[{"role":"user","content":"Hello"}],"max_tokens":64}'
-```
+See [Getting Started](docs/getting-started.md) for a complete walkthrough.
 
-Supports streaming (`"stream": true`), logprobs, stop sequences, and an optional UI dashboard (`serve.ui: true` in config).
+## Training Modes
 
-## Data tools
+| Mode | Command | Input Format | Use Case |
+|------|---------|-------------|----------|
+| [SFT](docs/cli/sft.md) | `mlxsmith sft` | `{prompt, response}` | Instruction-following via LoRA |
+| [Preference](docs/cli/preference-training.md) | `mlxsmith pref` | `{prompt, chosen, rejected}` | Alignment with DPO, ORPO, and others |
+| [KTO](docs/cli/kto.md) | `mlxsmith kto` | `{prompt, response, label}` | Binary good/bad feedback |
+| [GRPO](docs/cli/reinforcement-training.md) | `mlxsmith rft` | Environment + verifier | Reward-driven reinforcement learning |
+| [Online DPO](docs/cli/online-dpo.md) | `mlxsmith online-dpo` | `{prompt}` | Online preference with LLM judge |
+| [Self-verify](docs/cli/self-verify.md) | `mlxsmith self-verify` | `{prompt}` | Self-verification reward signal |
+| [Distillation](docs/cli/distillation.md) | `mlxsmith distill` | `{prompt}` | Teacher-to-student transfer |
+| [Judge](docs/cli/judge.md) | `mlxsmith judge` | Judge-format data | Train a scoring model |
+| [Pipeline](docs/cli/sft.md#pipeline) | `mlxsmith pipeline` | Combined | SFT then Pref then RFT then RLM |
 
-```bash
-mlxsmith data presets                                     # list built-in datasets
-mlxsmith data pull alpaca                                 # pull a preset
-mlxsmith data import raw.json --out data/sft/train.jsonl  # import ShareGPT → JSONL
-mlxsmith data split data/sft/train.jsonl --fractions 0.9 0.05 0.05
-mlxsmith data stats data/sft/train.jsonl                  # token counts, field analysis
-mlxsmith data validate data/sft/train.jsonl               # structure check
-```
+See [Concepts](docs/concepts.md) for an explanation of each training mode.
 
-Built-in presets: `alpaca`, `hh-rlhf`, `ultrachat-200k`, `ultrafeedback-binarized-prefs`, `ultrafeedback-binarized-sft`.
+## Tools
 
-## Model management
+| Tool | Command | Description |
+|------|---------|-------------|
+| [Data](docs/cli/data.md) | `mlxsmith data` | Import, split, validate, and pull datasets |
+| [Synthetic](docs/cli/synthetic-data.md) | `mlxsmith synthetic` | Generate and evolve training data |
+| [Eval](docs/cli/eval-and-bench.md) | `mlxsmith eval` | Run evaluation suites with pass@k |
+| [Bench](docs/cli/eval-and-bench.md) | `mlxsmith bench` | Benchmark inference and training throughput |
+| [Serve](docs/cli/serving.md) | `mlxsmith serve` | OpenAI-compatible model server |
+| [RLM](docs/cli/rlm.md) | `mlxsmith rlm` | Recursive self-improving training loop |
 
-```bash
-# Pull + convert HF model to MLX
-mlxsmith pull Qwen/Qwen3-4B-Instruct-2507
+## Documentation
 
-# With quantization
-mlxsmith pull Qwen/Qwen3-4B-Instruct-2507 --quantize --q-bits 4
-
-# Merge adapters
-mlxsmith adapters merge runs/sft_0001/adapter runs/pref_0001/adapter --weights 0.7 0.3
-```
-
-## HF auth
-
-```bash
-mlxsmith auth login --token "$HF_TOKEN"
-mlxsmith auth status
-mlxsmith auth logout
-```
-
-## Eval and bench
-
-```bash
-# Evaluation suite (pass@k with verifier checks)
-mlxsmith eval --suite eval/suites/coding.yaml
-
-# Benchmark inference or training throughput
-mlxsmith bench --mode inference
-mlxsmith bench --mode trainer
-mlxsmith bench --mode end_to_end
-```
-
-## Verifiers
-
-Built-in verifiers for eval, RFT, and preference tuning:
-
-- **regex** — pattern matching on completions
-- **jsonschema** — JSON structure validation
-- **pytest** — sandboxed test execution
-- **docker** — containerized verification
-- **compose** — multi-verifier composition (AND/OR/weighted)
-- **llm_judge** — LLM-based self-verification / ThinkPRM-style verifier
-
-See `docs/VERIFIERS.md` for the verifier API.
-
-## Environment plugin system
-
-```bash
-mlxsmith env list                  # list available environments
-mlxsmith env info envs/coding.yaml # show manifest (tasks, verifier, version)
-mlxsmith env init my_env           # scaffold a new environment
-mlxsmith env install ./my_env      # install from directory
-mlxsmith env package ./my_env      # create distributable tarball
-mlxsmith env run envs/coding.yaml  # execute RFT with this environment
-```
-
-Environments define tasks, verifiers, and reward functions for RFT training. See `docs/ENVIRONMENTS.md`.
-
-## Config system
-
-```bash
-mlxsmith config show              # display merged config (YAML/JSON/TOML)
-mlxsmith config show --sources    # show where each value comes from
-mlxsmith config init              # create default mlxsmith.yaml
-mlxsmith config validate          # check config structure
-mlxsmith config env               # show environment variable mapping
-```
-
-Config sources (in priority order): CLI flags > environment variables (`MLXSMITH__SECTION__KEY`) > config file > defaults.
-
-Training optimizers are configurable via `train.optimizer` and `train.optimizer_kwargs`
-(for example `adamw`, `adam`, `qhadam`, `muon` when available in MLX).
-
-## SDK (programmatic API)
-
-For building custom training loops:
-
-```python
-from mlxsmith.sdk import load_model, SamplingClient, TrainingClient, TrainingBatch
-
-loaded = load_model("path/to/model", config)
-
-# Sampling with logprobs
-sampler = SamplingClient(loaded.backend)
-result = sampler.sample("prompt", logprobs_k=5)
-
-# Training operations
-trainer = TrainingClient(loaded.backend)
-trainer.create_optimizer(lr=1e-4, weight_decay=0.01)
-fb = trainer.forward_backward(batch)
-trainer.optim_step(fb.result().grads)
-```
-
-Loss functions: DPO, ORPO, GRPO, CISPO, DRO, PPO, importance sampling, cross-entropy.
-
-## Research
-
-### RLM self-play loop
-
-RLM (Recursive Language Model) is a research feature — the infrastructure runs but has not produced measured gains yet.
-
-```bash
-mlxsmith rlm                       # single-process RLM
-mlxsmith pipeline --orchestrated   # multi-process orchestrated RLM
-mlxsmith rlm status                # check iteration state
-mlxsmith rlm history               # view history
-```
-
-Includes task generation, mutation for data diversity, corpus management, EMA-based gating, and weight pointer IPC for multi-process coordination. See `docs/orchestrator.md`.
-
-## Docs
-
-- `docs/PROJECT_FORMAT.md` — project layout and artifacts
-- `docs/VERIFIERS.md` — verifier API and sandbox behavior
-- `docs/COMPATIBILITY.md` — tested versions and model families
-- `docs/ENVIRONMENTS.md` — environment plugin system
-- `docs/orchestrator.md` — multi-process RLM orchestrator
-- `docs/rlm-ctl.md` — RLM training guide
-- `docs/ROADMAP.md` — product direction and milestones
-- `docs/README.md` — full docs index
+| Section | Description |
+|---------|-------------|
+| [Getting Started](docs/getting-started.md) | Full setup walkthrough |
+| [Concepts](docs/concepts.md) | Training modes explained |
+| [CLI Reference](docs/cli/README.md) | All commands with examples |
+| [Verifiers](docs/VERIFIERS.md) | Verifier API and composition |
+| [Environments](docs/ENVIRONMENTS.md) | Task environment plugins |
+| [Project Format](docs/PROJECT_FORMAT.md) | Run artifacts and layout |
+| [Configuration](docs/cli/configuration.md) | Config system and options |
+| [Compatibility](docs/COMPATIBILITY.md) | Tested versions and models |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |
+| [FAQ](docs/FAQ.md) | Frequently asked questions |
+| [Contributing](CONTRIBUTING.md) | How to contribute and run tests |
+| [Changelog](CHANGELOG.md) | Release notes |
 
 ## License
 

@@ -2,7 +2,7 @@
 
 `mlxsmith init <project>` creates a self-contained workspace:
 
-```
+```text
 myproj/
   mlxsmith.yaml
   data/
@@ -26,7 +26,7 @@ myproj/
 
 Each training command writes a run folder under `runs/`:
 
-```
+```text
 runs/
   sft_0001/
     adapter/
