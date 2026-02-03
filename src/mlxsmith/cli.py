@@ -1252,7 +1252,7 @@ def rlm_collect(
                 successful += 1
                 console.print(f"  [green]Success[/green] - {len(pairs)} training pairs")
             else:
-                console.print(f"  [yellow]No final answer[/yellow]")
+                console.print("  [yellow]No final answer[/yellow]")
 
         except Exception as e:
             console.print(f"  [red]Error: {e}[/red]")
