@@ -16,7 +16,7 @@ export function Message({ message }: MessageProps) {
   if (isSystem) {
     return (
       <div className="flex justify-center py-2">
-        <div className="max-w-3xl rounded-lg bg-muted px-4 py-2 text-xs text-muted-foreground">
+        <div className="max-w-3xl rounded-full border border-border/60 bg-muted/60 px-4 py-2 text-xs text-muted-foreground">
           {message.content}
         </div>
       </div>
@@ -38,10 +38,10 @@ export function Message({ message }: MessageProps) {
 
       <div
         className={cn(
-          "max-w-[80%] rounded-lg px-4 py-2",
+          "max-w-[80%] rounded-2xl px-4 py-3 shadow-soft",
           isUser
             ? "bg-primary text-primary-foreground"
-            : "bg-muted text-foreground"
+            : "bg-card/60 text-foreground border border-border/60 backdrop-blur"
         )}
       >
         <div className="prose prose-sm dark:prose-invert max-w-none">

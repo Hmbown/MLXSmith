@@ -77,6 +77,9 @@ mlxsmith config env
 |-----|---------|-------------|
 | `backend` | `none` | Acceleration backend |
 | `compile_cache` | `cache/compiled_kernels` | MLX compile cache directory |
+| `mhc` | `false` | Enable experimental mHC adapters (not a speedup) |
+| `mhc_n` | `4` | mHC stream expansion rate (n) |
+| `mhc_tmax` | `20` | mHC Sinkhorn iterations (tmax) |
 
 ### train
 

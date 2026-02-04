@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, MessageSquare, Settings2 } from "lucide-react";
+import { Plus, Trash2, MessageSquare, Settings2, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StatusPill } from "@/components/ui/status-pill";
 
 export function ChatSidebar() {
   const { sessions, currentSessionId, createSession, deleteSession, setCurrentSession } = useChatStore();
@@ -27,13 +28,13 @@ export function ChatSidebar() {
   const [showSettings, setShowSettings] = useState(true);
 
   return (
-    <div className="flex h-full w-80 flex-col border-r bg-card">
+    <div className="flex h-full w-80 flex-col border-r border-border/60 bg-card/40 backdrop-blur">
       {/* New Chat Button */}
       <div className="p-4">
         <Button
           onClick={() => createSession(defaultModel)}
           className="w-full"
-          variant="outline"
+          variant="glass"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Chat
@@ -50,10 +51,10 @@ export function ChatSidebar() {
               key={session.id}
               onClick={() => setCurrentSession(session.id)}
               className={cn(
-                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                "group flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors",
                 currentSessionId === session.id
-                  ? "bg-accent text-accent-foreground"
-                  : "hover:bg-accent/50"
+                  ? "bg-accent/70 text-accent-foreground"
+                  : "hover:bg-accent/40"
               )}
             >
               <MessageSquare className="h-4 w-4 shrink-0" />
@@ -83,9 +84,12 @@ export function ChatSidebar() {
           className="mb-3 flex w-full items-center justify-between text-sm font-medium"
         >
           <span className="flex items-center gap-2">
-            <Settings2 className="h-4 w-4" />
-            Parameters
+            <SlidersHorizontal className="h-4 w-4" />
+            Session Defaults
           </span>
+          <StatusPill tone="blue" dot={false}>
+            Live
+          </StatusPill>
         </button>
 
         {showSettings && (
@@ -99,8 +103,8 @@ export function ChatSidebar() {
                 </SelectTrigger>
                 <SelectContent>
                   {models?.map((model) => (
-                    <SelectItem key={model.id} value={model.id}>
-                      {model.name}
+                    <SelectItem key={model.id} value={model.fullName}>
+                      {model.displayName}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -158,7 +162,7 @@ export function ChatSidebar() {
               <textarea
                 value={defaultSystemPrompt}
                 onChange={(e) => setDefaultSystemPrompt(e.target.value)}
-                className="min-h-[80px] w-full rounded-md border bg-background px-3 py-2 text-xs"
+                className="min-h-[80px] w-full rounded-lg border border-input/70 bg-background/70 px-3 py-2 text-xs backdrop-blur"
                 placeholder="Enter system prompt..."
               />
             </div>

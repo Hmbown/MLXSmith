@@ -64,6 +64,16 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "mlxsmith-settings",
+      partialize: (state) => ({
+        theme: state.theme,
+        apiUrl: state.apiUrl,
+        projectPath: state.projectPath,
+        defaultModel: state.defaultModel,
+        defaultSystemPrompt: state.defaultSystemPrompt,
+        defaultTemperature: state.defaultTemperature,
+        defaultTopP: state.defaultTopP,
+        defaultMaxTokens: state.defaultMaxTokens,
+      }),
     }
   )
 );

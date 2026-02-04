@@ -4,48 +4,54 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
+    --background: 210 24% 97%;
+    --foreground: 222 34% 12%;
+    --card: 210 24% 99%;
+    --card-foreground: 222 34% 12%;
+    --popover: 210 24% 99%;
+    --popover-foreground: 222 34% 12%;
+    --primary: 206 86% 40%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 210 20% 92%;
+    --secondary-foreground: 222 34% 12%;
+    --muted: 210 20% 92%;
+    --muted-foreground: 215 16% 42%;
+    --accent: 198 40% 88%;
+    --accent-foreground: 222 34% 12%;
+    --destructive: 0 72% 52%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.75rem;
+    --border: 210 22% 86%;
+    --input: 210 22% 86%;
+    --ring: 206 86% 40%;
+    --radius: 1rem;
+    --glass: 210 40% 98%;
+    --glass-border: 210 20% 82%;
+    --shadow: 214 18% 60%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --background: 220 28% 10%;
+    --foreground: 210 40% 96%;
+    --card: 220 28% 12%;
+    --card-foreground: 210 40% 96%;
+    --popover: 220 28% 12%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 204 88% 52%;
+    --primary-foreground: 222 34% 10%;
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 220 20% 18%;
+    --muted-foreground: 215 20% 68%;
+    --accent: 210 22% 20%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 60% 42%;
+    --destructive-foreground: 210 40% 96%;
+    --border: 220 18% 22%;
+    --input: 220 18% 22%;
+    --ring: 204 88% 52%;
+    --glass: 220 22% 16%;
+    --glass-border: 220 14% 28%;
+    --shadow: 210 20% 10%;
   }
 }
 
@@ -54,7 +60,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
@@ -96,7 +102,51 @@
 
 /* Glass effect */
 .glass {
-  background: hsl(var(--background) / 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: hsl(var(--glass) / 0.7);
+  border: 1px solid hsl(var(--glass-border) / 0.6);
+  box-shadow: 0 20px 60px -40px hsl(var(--shadow) / 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.glass-panel {
+  @apply glass rounded-2xl;
+  background-image: linear-gradient(
+    130deg,
+    hsl(var(--glass) / 0.8),
+    hsl(var(--glass) / 0.45)
+  );
+}
+
+.status-pill {
+  @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold;
+  background: hsl(var(--accent) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.6);
+}
+
+.icon-badge {
+  @apply inline-flex h-10 w-10 items-center justify-center rounded-full;
+  background: hsl(var(--accent) / 0.5);
+  border: 1px solid hsl(var(--border) / 0.7);
+}
+
+.shadow-soft {
+  box-shadow: 0 12px 30px -20px hsl(var(--shadow) / 0.7);
+}
+
+.app-shell {
+  background: radial-gradient(circle at top, hsl(204 60% 90% / 0.6), transparent 55%),
+    radial-gradient(circle at 20% 20%, hsl(190 60% 80% / 0.35), transparent 45%),
+    linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+}
+
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(hsl(var(--border) / 0.15) 1px, transparent 0);
+  background-size: 24px 24px;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: -1;
 }

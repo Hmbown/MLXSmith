@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Providers } from "@/components/layout/providers";
+import { MobileNav } from "@/components/layout/mobile-nav";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-sans" });
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
   title: "MLXSmith - MLX Model Management",
@@ -18,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.variable}>
+      <body className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} app-shell`}>
         <Providers>
           <div className="flex h-screen overflow-hidden">
             {/* Sidebar */}
@@ -28,6 +30,7 @@ export default function RootLayout({
 
             {/* Main Content */}
             <main className="flex flex-1 flex-col overflow-hidden">
+              <MobileNav />
               {children}
             </main>
           </div>

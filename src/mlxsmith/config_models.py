@@ -37,6 +37,16 @@ class AccelConfig(BaseModel):
     
     backend: AccelBackendName = Field(default="none")
     compile_cache: str = Field(default="cache/compiled_kernels")
+    mhc: bool = Field(default=False, description="Enable experimental mHC adapters (not a speedup)")
+    mhc_n: int = Field(default=4, description="mHC stream expansion rate (n)")
+    mhc_tmax: int = Field(default=20, description="mHC Sinkhorn iterations (tmax)")
+
+    @field_validator("mhc_n", "mhc_tmax")
+    @classmethod
+    def validate_positive_int(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("value must be >= 1")
+        return v
 
 
 class TrainConfig(BaseModel):
@@ -191,6 +201,9 @@ CLI_ALIASES: dict[str, tuple[str, ...]] = {
     "optimizer": ("train", "optimizer"),
     "model_id": ("model", "id"),
     "accel_backend": ("accel", "backend"),
+    "mhc": ("accel", "mhc"),
+    "mhc_n": ("accel", "mhc_n"),
+    "mhc_tmax": ("accel", "mhc_tmax"),
     "host": ("serve", "host"),
     "port": ("serve", "port"),
     "ui": ("serve", "ui"),

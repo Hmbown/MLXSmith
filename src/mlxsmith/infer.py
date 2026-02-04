@@ -37,6 +37,20 @@ def _load_backend(cfg: ProjectConfig, model_spec: str):
     )
     if adapter_path:
         llm.apply_adapter(str(adapter_path))
+    if getattr(cfg.accel, "mhc", False):
+        try:
+            from .mhc import apply_mhc
+
+            model = getattr(llm, "model", None)
+            if model is not None:
+                apply_mhc(
+                    model,
+                    n=int(getattr(cfg.accel, "mhc_n", 4)),
+                    tmax=int(getattr(cfg.accel, "mhc_tmax", 20)),
+                    verbose=False,
+                )
+        except Exception as e:
+            raise RuntimeError(f"Failed to apply mHC adapters: {e}") from e
     return llm, base_model
 
 

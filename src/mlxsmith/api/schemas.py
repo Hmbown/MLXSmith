@@ -413,6 +413,13 @@ class ModelPullResponse(BaseModel):
     message: Optional[str] = Field(None, description="Status message")
 
 
+class ModelDeleteResponse(BaseModel):
+    """Response for model deletion."""
+    ok: bool = Field(..., description="Whether delete succeeded")
+    model_id: str = Field(..., description="Model identifier")
+    message: Optional[str] = Field(None, description="Status message")
+
+
 # =============================================================================
 # HuggingFace Token Management
 # =============================================================================

@@ -9,15 +9,23 @@ import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { useChatStore } from "@/stores/chat";
 import { useSettingsStore } from "@/stores/settings";
 import { useChat } from "@/hooks/useChat";
+import { useModels } from "@/hooks/useModels";
 
 export default function ChatPage() {
   const { sessions, currentSessionId, createSession } = useChatStore();
-  const { defaultModel, defaultSystemPrompt, defaultTemperature, defaultTopP, defaultMaxTokens } = useSettingsStore();
+  const { defaultModel, setDefaultModel, defaultSystemPrompt, defaultTemperature, defaultTopP, defaultMaxTokens } = useSettingsStore();
+  const { data: models } = useModels();
   const { sendMessage, isStreaming } = useChat();
 
   // Create initial session if none exists
   useEffect(() => {
-    if (sessions.length === 0) {
+    if (!defaultModel && models && models.length > 0) {
+      setDefaultModel(models[0].fullName);
+    }
+  }, [defaultModel, models, setDefaultModel]);
+
+  useEffect(() => {
+    if (sessions.length === 0 && defaultModel) {
       createSession(defaultModel);
     }
   }, [sessions.length, defaultModel, createSession]);
@@ -44,24 +52,24 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-full">
-      {/* Sidebar */}
-      <ChatSidebar />
+      <div className="flex h-full">
+        {/* Sidebar */}
+        <ChatSidebar />
 
-      {/* Main Chat Area */}
-      <div className="flex flex-1 flex-col">
-        {/* Header */}
-        <header className="flex h-16 items-center border-b px-6">
-          <MessageSquare className="mr-2 h-5 w-5 text-muted-foreground" />
-          <div>
-            <h1 className="text-lg font-semibold">Chat</h1>
-            {currentSession && (
-              <p className="text-sm text-muted-foreground">
-                {currentSession.model || defaultModel}
-              </p>
-            )}
-          </div>
-        </header>
+        {/* Main Chat Area */}
+        <div className="flex flex-1 flex-col">
+          {/* Header */}
+          <header className="flex h-16 items-center border-b border-border/60 px-6">
+            <MessageSquare className="mr-2 h-5 w-5 text-muted-foreground" />
+            <div>
+              <h1 className="text-lg font-semibold">Chat</h1>
+              {currentSession && (
+                <p className="text-sm text-muted-foreground">
+                  {currentSession.model || defaultModel || "Select a model"}
+                </p>
+              )}
+            </div>
+          </header>
 
         {/* Messages */}
         <ScrollArea className="flex-1 px-6">

@@ -1,17 +1,33 @@
 import type {
-  ModelInfo,
+  ModelsListResponse,
   ChatCompletionRequest,
   ChatCompletionChunk,
   RLMState,
   RLMHistoryEntry,
   ChatMessage,
+  AdapterReloadResponse,
+  HFTokenResponse,
 } from "@/types";
+import type { LocalModel } from "@/lib/models";
+import { toLocalModel } from "@/lib/models";
+import { useSettingsStore } from "@/stores/settings";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
+function resolveApiBase(): string {
+  if (typeof window !== "undefined") {
+    const fromStore = useSettingsStore.getState().apiUrl?.trim();
+    if (fromStore) {
+      return fromStore.replace(/\/+$/, "");
+    }
+  }
+  return DEFAULT_API_BASE.replace(/\/+$/, "");
+}
 
 // Helper for fetch with error handling
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${url}`, {
+  const base = resolveApiBase();
+  const res = await fetch(`${base}${url}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -28,14 +44,34 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 // Models API
-export async function listModels(): Promise<ModelInfo[]> {
-  return fetchJSON<ModelInfo[]>("/internal/models/list");
+export async function listModels(): Promise<LocalModel[]> {
+  const response = await fetchJSON<ModelsListResponse>("/internal/models/list");
+  return response.models.map(toLocalModel);
 }
 
-export async function pullModel(modelId: string): Promise<{ success: boolean; message: string }> {
+export async function pullModel(input: {
+  modelId: string;
+  quantize?: boolean;
+  qBits?: number;
+}): Promise<{ ok: boolean; model_id: string; message?: string }> {
+  const body: Record<string, unknown> = {
+    model_id: input.modelId,
+    quantize: input.quantize ?? false,
+  };
+  if (typeof input.qBits === "number") {
+    body.q_bits = input.qBits;
+  }
+
   return fetchJSON("/internal/models/pull", {
     method: "POST",
-    body: JSON.stringify({ model_id: modelId }),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteModel(modelId: string): Promise<{ ok: boolean; model_id: string; message?: string }> {
+  const query = new URLSearchParams({ model_id: modelId });
+  return fetchJSON(`/internal/models/delete?${query.toString()}`, {
+    method: "POST",
   });
 }
 
@@ -56,7 +92,8 @@ export async function sendChatCompletion(
 export async function* streamChatCompletion(
   request: ChatCompletionRequest
 ): AsyncGenerator<ChatCompletionChunk, void, unknown> {
-  const res = await fetch(`${API_BASE}/v1/chat/completions`, {
+  const base = resolveApiBase();
+  const res = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...request, stream: true }),
@@ -107,48 +144,32 @@ export async function getRLMHistory(): Promise<RLMHistoryEntry[]> {
   return fetchJSON<RLMHistoryEntry[]>("/internal/rlm/history");
 }
 
+// Adapter reload
+export async function reloadAdapter(adapterPath?: string, reloadBase = false): Promise<AdapterReloadResponse> {
+  return fetchJSON("/internal/adapter/reload", {
+    method: "POST",
+    body: JSON.stringify({
+      adapter_path: adapterPath ?? null,
+      reload_base: reloadBase,
+    }),
+  });
+}
+
 // Server Control API
-export async function getServerStatus(): Promise<{ running: boolean; port: number }> {
+export async function getServerStatus(): Promise<{ running: boolean }> {
   try {
-    const res = await fetch(`${API_BASE}/health`, { method: "GET" });
-    return { running: res.ok, port: 8080 };
+    const base = resolveApiBase();
+    const res = await fetch(`${base}/health`, { method: "GET" });
+    return { running: res.ok };
   } catch {
-    return { running: false, port: 8080 };
+    return { running: false };
   }
 }
 
-export async function startServer(port: number): Promise<{ success: boolean }> {
-  return fetchJSON("/internal/server/start", {
-    method: "POST",
-    body: JSON.stringify({ port }),
-  });
-}
-
-export async function stopServer(): Promise<{ success: boolean }> {
-  return fetchJSON("/internal/server/stop", {
-    method: "POST",
-  });
-}
-
 // Settings API
-export async function saveHFToken(token: string): Promise<{ success: boolean }> {
+export async function saveHFToken(token: string, validate = true, persist = true): Promise<HFTokenResponse> {
   return fetchJSON("/internal/hf/token", {
     method: "POST",
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ token, validate_token: validate, persist }),
   });
-}
-
-export async function getHFToken(): Promise<{ token: string | null }> {
-  return fetchJSON("/internal/hf/token");
-}
-
-export async function saveProjectPath(path: string): Promise<{ success: boolean }> {
-  return fetchJSON("/internal/settings/project-path", {
-    method: "POST",
-    body: JSON.stringify({ path }),
-  });
-}
-
-export async function getProjectPath(): Promise<{ path: string | null }> {
-  return fetchJSON("/internal/settings/project-path");
 }

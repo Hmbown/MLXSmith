@@ -773,6 +773,9 @@ def serve(
     host: Optional[str] = typer.Option(None, "--host", help="Override serve.host"),
     port: Optional[int] = typer.Option(None, "--port", help="Override serve.port"),
     ui: Optional[bool] = typer.Option(None, "--ui", help="Override serve.ui (true/false)"),
+    mhc: Optional[bool] = typer.Option(None, "--mhc", help="Override accel.mhc (true/false)"),
+    mhc_n: Optional[int] = typer.Option(None, "--mhc-n", help="Override accel.mhc_n"),
+    mhc_tmax: Optional[int] = typer.Option(None, "--mhc-tmax", help="Override accel.mhc_tmax"),
 ):
     root = project_root_from_cwd()
     cfg = get_config(
@@ -781,6 +784,9 @@ def serve(
         host=host,
         port=port,
         ui=ui,
+        mhc=mhc,
+        mhc_n=mhc_n,
+        mhc_tmax=mhc_tmax,
     )
     h = cfg.serve.host
     p = cfg.serve.port
@@ -798,6 +804,9 @@ def bench(
     config: str = typer.Option("mlxsmith.yaml", "-c", "--config", help="Config file path"),
     model: Optional[str] = typer.Option(None, "--model", help="Override model.id"),
     accel: Optional[str] = typer.Option(None, "--accel", help="Override accel.backend"),
+    mhc: Optional[bool] = typer.Option(None, "--mhc", help="Override accel.mhc (true/false)"),
+    mhc_n: Optional[int] = typer.Option(None, "--mhc-n", help="Override accel.mhc_n"),
+    mhc_tmax: Optional[int] = typer.Option(None, "--mhc-tmax", help="Override accel.mhc_tmax"),
     prompt: str = typer.Option("Hello", "--prompt"),
     max_tokens: int = typer.Option(128, "--max-tokens"),
     reps: int = typer.Option(3, "--reps"),
@@ -810,6 +819,9 @@ def bench(
         root=root,
         model_id=model,
         accel_backend=accel,
+        mhc=mhc,
+        mhc_n=mhc_n,
+        mhc_tmax=mhc_tmax,
     )
     out = run_bench(
         root,

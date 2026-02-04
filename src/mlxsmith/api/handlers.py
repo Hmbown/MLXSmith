@@ -15,12 +15,13 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import shutil
 import time
 import uuid
 from pathlib import Path
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Security, status
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request, Security, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -48,6 +49,7 @@ from .schemas import (
     LogprobsContent,
     ModelInfo,
     ModelsListResponse,
+    ModelDeleteResponse,
     ModelPullRequest,
     ModelPullResponse,
     ModelPullStatus,
@@ -1168,6 +1170,52 @@ def create_router(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Model pull failed: {str(e)}",
             )
+
+    @router.post(
+        "/internal/models/delete",
+        response_model=ModelDeleteResponse,
+        responses={
+            200: {"description": "Model deleted", "model": ModelDeleteResponse},
+            400: {"description": "Bad request", "model": ErrorResponse},
+            401: {"description": "Unauthorized", "model": ErrorResponse},
+            404: {"description": "Model not found", "model": ErrorResponse},
+            500: {"description": "Delete failed", "model": ErrorResponse},
+        },
+        tags=["Models"],
+    )
+    async def delete_model(model_id: str = Query(..., alias="model_id")) -> ModelDeleteResponse:
+        """Delete a cached model by id.
+
+        Supports MLX cache models and HF cache entries (id ending in " (HF)").
+        """
+        if not model_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="model_id required")
+
+        cache_dir = _get_cache_dir()
+        is_hf = model_id.endswith(" (HF)")
+        cleaned = model_id.replace(" (HF)", "")
+        model_dir_name = cleaned.replace("/", "__")
+        candidates = []
+
+        if is_hf:
+            candidates.append(cache_dir / "hf" / model_dir_name)
+        else:
+            candidates.append(cache_dir / "mlx" / model_dir_name)
+            candidates.append(cache_dir / "hf" / model_dir_name)
+
+        target = next((path for path in candidates if path.exists()), None)
+        if target is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+
+        try:
+            shutil.rmtree(target)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete model: {str(e)}",
+            )
+
+        return ModelDeleteResponse(ok=True, model_id=model_id, message="Model deleted")
     
     # ==========================================================================
     # HuggingFace Token Management

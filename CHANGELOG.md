@@ -4,6 +4,15 @@
 
 - (none)
 
+## 0.1.8
+
+- Web dashboard (Next.js): full workflow UI (Dashboard, models, adapters, training, eval, chat, serving).
+- Models API: delete cached models via `/internal/models/delete`.
+- Experimental mHC adapters:
+  - New `mlxsmith.mhc` module (block-local patching + Sinkhorn-Knopp mixing).
+  - Opt-in via `accel.mhc` (plus `mhc_n`, `mhc_tmax`) and CLI flags on `serve`/`bench`.
+- Utility scripts for repo prompt seeding and Codex batch generation.
+
 ## 0.1.7
 
 - External model backends for data/judging:

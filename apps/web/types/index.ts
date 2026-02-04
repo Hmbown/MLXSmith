@@ -1,14 +1,28 @@
 // API Types
 
+export type JSONValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JSONValue }
+  | JSONValue[];
+
 export interface ModelInfo {
   id: string;
-  name: string;
-  size: string;
-  quantization?: string;
-  architecture?: string;
-  lastUsed?: string;
   path: string;
-  isAdapter?: boolean;
+  size_bytes?: number;
+  format: "mlx" | "hf" | "gguf";
+  has_adapter: boolean;
+  adapter_path?: string;
+  metadata?: Record<string, JSONValue>;
+  downloaded_at?: number;
+}
+
+export interface ModelsListResponse {
+  models: ModelInfo[];
+  total: number;
+  cache_dir: string;
 }
 
 export interface ChatMessage {
@@ -39,45 +53,44 @@ export interface ChatCompletionChunk {
   }[];
 }
 
+export interface RLMTrainingMetrics {
+  loss?: number;
+  reward_mean?: number;
+  reward_std?: number;
+  kl_div?: number;
+  learning_rate?: number;
+}
+
 export interface RLMState {
-  status?: 'idle' | 'running' | 'paused' | 'error';
-  currentStep?: number;
-  totalSteps?: number;
-  currentLoss?: number;
-  bestScore?: number;
-  config?: Record<string, unknown>;
-  [key: string]: unknown;
+  status: "idle" | "running" | "paused" | "completed" | "error";
+  iteration?: number;
+  total_iterations?: number;
+  metrics?: RLMTrainingMetrics;
+  started_at?: number;
+  updated_at?: number;
+  error_message?: string;
 }
 
 export interface RLMHistoryEntry {
-  step: number;
+  iteration: number;
   timestamp: number;
-  loss?: number;
-  reward?: number;
   adapter_score?: number;
-  passed?: boolean;
-  metrics?: Record<string, number>;
+  base_score?: number;
+  improvement?: number;
+  metrics?: RLMTrainingMetrics;
 }
 
-export interface ServerStatus {
-  running: boolean;
-  port: number;
-  url: string;
-}
-
-export interface TrainingConfig {
-  model: string;
-  dataset: string;
-  output: string;
-  epochs: number;
-  batchSize: number;
-  learningRate: number;
-  loraR: number;
-  loraAlpha: number;
-  loraDropout: number;
+export interface AdapterReloadResponse {
+  ok: boolean;
+  base_model: string;
+  adapter_path?: string;
+  message?: string;
 }
 
 export interface HFTokenResponse {
-  success: boolean;
-  message?: string;
+  ok: boolean;
+  validated: boolean;
+  username?: string;
+  message: string;
+  storage_method: "keyring" | "file" | "memory";
 }

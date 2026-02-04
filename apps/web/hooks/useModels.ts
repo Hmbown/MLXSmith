@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listModels, pullModel } from "@/lib/api";
+import { listModels, pullModel, deleteModel } from "@/lib/api";
 
 const MODELS_KEY = "models";
 
@@ -20,6 +20,17 @@ export function usePullModel() {
     mutationFn: pullModel,
     onSuccess: () => {
       // Invalidate and refetch models list
+      queryClient.invalidateQueries({ queryKey: [MODELS_KEY] });
+    },
+  });
+}
+
+export function useDeleteModel() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteModel,
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [MODELS_KEY] });
     },
   });

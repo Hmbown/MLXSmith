@@ -68,6 +68,9 @@ mlxsmith bench --model cache/mlx/mlx-community__Qwen3-4B-Instruct-2507-4bit --mo
 | `--steps` | `5` | Steps per rep (trainer mode) |
 | `--config`, `-c` | `mlxsmith.yaml` | Config file path |
 | `--accel` | From config | Acceleration backend |
+| `--mhc` | From config | Enable experimental mHC adapters (not a speedup) |
+| `--mhc-n` | From config | mHC stream expansion rate (n) |
+| `--mhc-tmax` | From config | mHC Sinkhorn iterations (tmax) |
 
 ### Output
 

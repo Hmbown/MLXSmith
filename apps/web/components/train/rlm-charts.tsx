@@ -36,11 +36,10 @@ export function RLMCharts({ history }: RLMChartsProps) {
   }
 
   const chartData = history.map((entry) => ({
-    step: entry.step,
-    loss: entry.loss,
-    reward: entry.reward,
+    iteration: entry.iteration,
+    loss: entry.metrics?.loss,
+    reward: entry.metrics?.reward_mean,
     adapterScore: entry.adapter_score,
-    passed: entry.passed ? 1 : 0,
   }));
 
   return (
@@ -70,7 +69,7 @@ export function RLMCharts({ history }: RLMChartsProps) {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis
-                  dataKey="step"
+                  dataKey="iteration"
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                 />
@@ -102,7 +101,7 @@ export function RLMCharts({ history }: RLMChartsProps) {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis
-                  dataKey="step"
+                  dataKey="iteration"
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                 />
@@ -141,7 +140,7 @@ export function RLMCharts({ history }: RLMChartsProps) {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis
-                  dataKey="step"
+                  dataKey="iteration"
                   stroke="hsl(var(--muted-foreground))"
                   fontSize={12}
                 />

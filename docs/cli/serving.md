@@ -46,6 +46,9 @@ curl http://localhost:8080/v1/chat/completions \
 | `--host` | From config | Host to bind (`0.0.0.0` for all interfaces) |
 | `--port` | From config | Port number |
 | `--ui` | From config | Enable web UI dashboard |
+| `--mhc` | From config | Enable experimental mHC adapters (not a speedup) |
+| `--mhc-n` | From config | mHC stream expansion rate (n) |
+| `--mhc-tmax` | From config | mHC Sinkhorn iterations (tmax) |
 | `--config`, `-c` | `mlxsmith.yaml` | Config file path |
 
 Config options under the `serve` section:

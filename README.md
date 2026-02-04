@@ -6,7 +6,7 @@
 
 Fine-tune language models on Apple Silicon. SFT, preference optimization, reinforcement learning, distillation, and serving — all native to MLX.
 
-**Status:** Alpha (v0.1.7) · Validated on Qwen3-4B
+**Status:** Alpha (v0.1.8) · Validated on Qwen3-4B
 
 ---
 
@@ -23,7 +23,9 @@ Fine-tune language models on Apple Silicon. SFT, preference optimization, reinfo
 - **External model backends** — Use Codex, Claude, Gemini CLIs or any OpenAI-compatible API for data generation and judging
 - **Recursive training** — Self-improving RLM loop with task generation and gating
 - **Serving** — OpenAI-compatible API with streaming
+- **Web dashboard (Next.js)** — Models, adapters, training, eval, chat, and serving UI
 - **Environment plugins** — Reusable task and verifier packages for RL training
+- **Experimental mHC adapters** — Optional block-local mHC patching for MLX transformer blocks (not a speedup)
 
 ## Requirements
 
@@ -79,6 +81,22 @@ mlxsmith serve --model runs/sft_0001/adapter --port 8080
 ```
 
 See [Getting Started](docs/getting-started.md) for a complete walkthrough.
+
+## Web Dashboard (Optional)
+
+Run the API server, then start the Next.js dashboard:
+
+```bash
+# Terminal 1: start the OpenAI-compatible API
+mlxsmith serve --model cache/mlx/mlx-community__Qwen3-4B-Instruct-2507-4bit --port 8080
+
+# Terminal 2: start the dashboard
+cd apps/web
+npm install
+npm run dev
+```
+
+The dashboard defaults to `http://localhost:8080` for the API base URL (change in Settings if needed).
 
 ## Training Modes
 

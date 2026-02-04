@@ -8,25 +8,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { useTheme } from "next-themes";
 import { useSettingsStore } from "@/stores/settings";
-import { useHFToken, useProjectPath } from "@/hooks/useSettings";
-import { cn } from "@/lib/utils";
+import { useHFToken } from "@/hooks/useSettings";
+import { StatusPill } from "@/components/ui/status-pill";
+import { useServerStatus } from "@/hooks/useServer";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const { apiUrl, setApiUrl, defaultModel, defaultTemperature, defaultMaxTokens } = useSettingsStore();
-  const { token: hfToken, setToken: setHfToken, isLoading: hfTokenLoading } = useHFToken();
-  const { path: projectPath, setPath: setProjectPath, isLoading: projectPathLoading } = useProjectPath();
+  const { apiUrl, setApiUrl, projectPath, setProjectPath, defaultModel, defaultTemperature, defaultMaxTokens } =
+    useSettingsStore();
+  const { setToken, isLoading: hfTokenLoading } = useHFToken();
+  const { data: serverStatus } = useServerStatus();
 
-  const [localHfToken, setLocalHfToken] = useState(hfToken || "");
-  const [localProjectPath, setLocalProjectPath] = useState(projectPath || "");
   const [localApiUrl, setLocalApiUrl] = useState(apiUrl);
+  const [localProjectPath, setLocalProjectPath] = useState(projectPath || "");
+  const [localHfToken, setLocalHfToken] = useState("");
   const [saved, setSaved] = useState(false);
 
-  const handleSaveHFToken = () => {
-    setHfToken(localHfToken);
+  const showSaved = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleSaveApiUrl = () => {
+    setApiUrl(localApiUrl);
     showSaved();
   };
 
@@ -35,33 +41,29 @@ export default function SettingsPage() {
     showSaved();
   };
 
-  const handleSaveApiUrl = () => {
-    setApiUrl(localApiUrl);
-    showSaved();
-  };
-
-  const showSaved = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSaveHFToken = async () => {
+    if (!localHfToken.trim()) return;
+    try {
+      await setToken(localHfToken.trim());
+      setLocalHfToken("");
+      showSaved();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to save token");
+    }
   };
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <header className="flex h-16 items-center border-b px-6">
+      <header className="flex h-16 items-center border-b border-border/60 px-6">
         <Settings className="mr-2 h-5 w-5 text-muted-foreground" />
         <div>
           <h1 className="text-lg font-semibold">Settings</h1>
-          <p className="text-sm text-muted-foreground">
-            Configure MLXSmith preferences
-          </p>
+          <p className="text-sm text-muted-foreground">Configure MLXSmith preferences</p>
         </div>
       </header>
 
-      {/* Content */}
       <ScrollArea className="flex-1 p-6">
-        <div className="mx-auto max-w-2xl space-y-6">
-          {/* Theme Settings */}
+        <div className="mx-auto max-w-3xl space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -74,9 +76,7 @@ export default function SettingsPage() {
                 )}
                 Appearance
               </CardTitle>
-              <CardDescription>
-                Choose your preferred theme
-              </CardDescription>
+              <CardDescription>Choose your preferred theme</CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs value={theme} onValueChange={(v) => setTheme(v)}>
@@ -98,16 +98,18 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* API Settings */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Globe className="h-5 w-5" />
-                API Configuration
-              </CardTitle>
-              <CardDescription>
-                Configure the MLXSmith API endpoint
-              </CardDescription>
+            <CardHeader className="flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="h-5 w-5" />
+                  API Configuration
+                </CardTitle>
+                <CardDescription>Configure the MLXSmith API endpoint</CardDescription>
+              </div>
+              <StatusPill tone={serverStatus?.running ? "green" : "red"} dot={false}>
+                {serverStatus?.running ? "Online" : "Offline"}
+              </StatusPill>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -120,30 +122,23 @@ export default function SettingsPage() {
                     placeholder="http://localhost:8080"
                   />
                   <Button onClick={handleSaveApiUrl}>
-                    {saved ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      "Save"
-                    )}
+                    {saved ? <Check className="h-4 w-4" /> : "Save"}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  The URL of your MLXSmith API server
+                  The URL of your MLXSmith API server (used for chat + models).
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          {/* HuggingFace Settings */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Key className="h-5 w-5" />
                 HuggingFace Token
               </CardTitle>
-              <CardDescription>
-                Your HuggingFace access token for downloading models
-              </CardDescription>
+              <CardDescription>Store your HF token on the API server.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -156,41 +151,24 @@ export default function SettingsPage() {
                     onChange={(e) => setLocalHfToken(e.target.value)}
                     placeholder="hf_..."
                   />
-                  <Button onClick={handleSaveHFToken} disabled={hfTokenLoading}>
-                    {hfTokenLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : saved ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      "Save"
-                    )}
+                  <Button onClick={handleSaveHFToken} disabled={hfTokenLoading || !localHfToken.trim()}>
+                    {hfTokenLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Create a token at{" "}
-                  <a
-                    href="https://huggingface.co/settings/tokens"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary underline"
-                  >
-                    huggingface.co/settings/tokens
-                  </a>
+                  The token is stored securely server-side. Re-enter to update.
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          {/* Project Settings */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Folder className="h-5 w-5" />
                 Project Path
               </CardTitle>
-              <CardDescription>
-                Default location for models, adapters, and data
-              </CardDescription>
+              <CardDescription>Default location for models, adapters, and data</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -202,50 +180,38 @@ export default function SettingsPage() {
                     onChange={(e) => setLocalProjectPath(e.target.value)}
                     placeholder="/path/to/project"
                   />
-                  <Button onClick={handleSaveProjectPath} disabled={projectPathLoading}>
-                    {projectPathLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : saved ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      "Save"
-                    )}
+                  <Button onClick={handleSaveProjectPath}>
+                    {saved ? <Check className="h-4 w-4" /> : "Save"}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  This is where models, adapters, and training data will be stored
+                  Used for CLI command defaults in the web UI.
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          {/* Default Chat Settings */}
           <Card>
             <CardHeader>
               <CardTitle>Default Chat Settings</CardTitle>
-              <CardDescription>
-                Default parameters for new chat sessions
-              </CardDescription>
+              <CardDescription>Defaults for new chat sessions</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Temperature</Label>
-                  <p className="font-medium">{defaultTemperature}</p>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Max Tokens</Label>
-                  <p className="font-medium">{defaultMaxTokens}</p>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Default Model</Label>
-                  <p className="font-medium">{defaultModel || "Not set"}</p>
-                </div>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Temperature</Label>
+                <p className="font-medium">{defaultTemperature}</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Max Tokens</Label>
+                <p className="font-medium">{defaultMaxTokens}</p>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label className="text-xs text-muted-foreground">Default Model</Label>
+                <p className="font-medium">{defaultModel || "Not set"}</p>
               </div>
             </CardContent>
           </Card>
 
-          {/* About */}
           <Card>
             <CardHeader>
               <CardTitle>About</CardTitle>
@@ -256,9 +222,7 @@ export default function SettingsPage() {
                   <span className="font-medium text-foreground">MLXSmith</span> - Train, serve, and chat with MLX models
                 </p>
                 <p>Version 0.1.0</p>
-                <p>
-                  Built with Next.js, Tailwind CSS, and shadcn/ui
-                </p>
+                <p>Web console aligned with the MLXSmith CLI.</p>
               </div>
             </CardContent>
           </Card>
