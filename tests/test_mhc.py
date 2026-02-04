@@ -29,8 +29,8 @@ def _mlx_import_works() -> bool:
 if not _mlx_import_works():
     pytest.skip("mlx not available or failed to initialize", allow_module_level=True)
 
-import mlx.core as mx  # type: ignore
-import mlx.nn as nn  # type: ignore
+import mlx.core as mx  # type: ignore # noqa: E402
+import mlx.nn as nn  # type: ignore # noqa: E402
 
 
 class _DummyAttn(nn.Module):
