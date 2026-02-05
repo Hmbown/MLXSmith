@@ -1,40 +1,43 @@
-# Status (Alpha)
+# Status
 
-Date: 2026-02-02
+**Current version:** 0.1.9 (Alpha)
+**Last updated:** 2026-02-02
 
-## Features
-- Core CLI (`init`, `doctor`, `pull`, `quantize`, config tooling, data tools).
-- SFT (LoRA/QLoRA) with run tracking and adapters.
-- Preference tuning (DPO/ORPO) with configurable beta and KL coefficients.
-- Reinforced fine-tuning (GRPO) with token-level environments and verifier-based rewards.
-- Knowledge distillation (offline and OPD modes).
-- OpenAI-compatible `/v1/chat/completions` endpoint + streaming.
+## Implemented Features
+
+- Core CLI: `init`, `doctor`, `pull`, `quantize`, config tooling, data tools.
+- SFT (LoRA/QLoRA) with run tracking and adapter artifacts.
+- Preference optimization (DPO, ORPO, IPO, CPO, SimPO, TDPO) with configurable beta and KL coefficients.
+- Reinforcement fine-tuning (GRPO, DR-GRPO, DAPO) with verifier-based rewards.
 - KTO (binary feedback) training pipeline.
-- New preference losses: SimPO, TDPO.
-- Synthetic data: Evol-Instruct prompt evolution + rejection-sampled SFT.
+- Knowledge distillation (offline and OPD modes).
+- Online DPO with LLM judge scoring.
+- Self-verification training with policy gradient rewards.
+- Synthetic data generation: Evol-Instruct prompt evolution and rejection-sampled SFT.
+- OpenAI-compatible `/v1/chat/completions` endpoint with streaming.
 - HF auth helpers: `mlxsmith auth login/status/logout`.
-- Dataset presets, pull, import, split, stats, validation.
-- Built-in verifiers: regex, jsonschema, pytest (sandboxed), docker, compose, llm_judge.
+- Dataset presets, pull, import, split, stats, and validation.
+- Built-in verifiers: regex, JSON schema, pytest (sandboxed), Docker, compose, LLM judge.
 - Environment plugin system for RFT task/verifier packaging.
 - SDK: SamplingClient, TrainingClient, loss registry (DPO, ORPO, GRPO, CISPO, DRO, PPO).
-- Adapter merging, eval suites (pass@k), benchmarking.
-- Run tracking: adapter artifacts, metrics, config snapshots.
+- Adapter merging, eval suites (pass@k), and throughput benchmarking.
+- Run tracking: adapter artifacts, metrics JSONL, and config snapshots.
 
 ## Research
-- RLM self-play loop (infrastructure runs, no measured gains yet).
-- Orchestrated RLM mode (queue-driven inference + trainer workers).
-- ZMLX acceleration (optional, best-effort).
 
-## Validated
-- Full pipeline validated locally on Qwen3-4B Instruct 2507: SFT (`runs/sft_0002`), DPO (`runs/pref_0002`), RFT (`runs/rft_0002`), RLM (`runs/rlm_0003`–`runs/rlm_0005`), serve on `runs/rlm_0003/adapter`.
+- RLM self-play loop (infrastructure complete; no measured gains yet).
+- Orchestrated RLM mode (queue-driven inference and trainer workers).
 
-## Remaining limitations
-- Eval suite runner is minimal (task-level pass@k + verifier checks).
-- Production-grade sandboxing is out of scope (documented in `docs/VERIFIERS.md`).
+## Validated Models
 
-## Next
-- Expand eval suite tooling (benchmark packs, multi-metric reports).
-- Add first-class support for speculative decoding.
-- See `docs/ROADMAP.md` for the broader product roadmap.
-- See `docs/WORKPLAN.md` for parity + app execution details.
-- See `docs/orchestrator.md` for multi-process orchestrator design.
+- Qwen3-4B Instruct (full pipeline: SFT, DPO, RFT, RLM, serve).
+- Qwen3-1.7B (end-to-end smoke test).
+
+## Known Limitations
+
+- Eval suite runner is minimal (task-level pass@k with verifier checks).
+- Production-grade sandboxing is out of scope (see [Verifiers](VERIFIERS.md)).
+
+## Next Steps
+
+See [Roadmap](ROADMAP.md) for the full plan.

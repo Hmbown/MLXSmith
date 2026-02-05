@@ -18,7 +18,7 @@ cd "$ROOT"
 
 MODEL_ID="Qwen/Qwen3-1.7B-MLX-4bit"
 MODEL_DIR="cache/mlx/Qwen__Qwen3-1.7B-MLX-4bit"
-CFG="qwen3_1.7b_mlx_4bit_repo.yaml"
+CFG="examples/qwen3_1.7b_mlx_4bit_repo.yaml"
 
 PROMPTS="${PROMPTS:-data/mlxsmith_prompts.jsonl}"
 SFT_JSONL="${SFT_JSONL:-data/mlxsmith_sft.jsonl}"
