@@ -15,7 +15,7 @@ cd "$ROOT"
 
 MODEL_ID="Qwen/Qwen3-1.7B-MLX-4bit"
 MODEL_DIR="cache/mlx/Qwen__Qwen3-1.7B-MLX-4bit"
-CFG="qwen3_1.7b_mlx_4bit_smoke.yaml"
+CFG="examples/qwen3_1.7b_mlx_4bit_smoke.yaml"
 
 if [[ ! -d "$MODEL_DIR" ]]; then
   mlxsmith pull "$MODEL_ID"

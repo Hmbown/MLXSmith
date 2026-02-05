@@ -2,52 +2,31 @@
 
 [![PyPI](https://img.shields.io/pypi/v/mlxsmith)](https://pypi.org/project/mlxsmith/)
 [![CI](https://github.com/Hmbown/MLXSmith/actions/workflows/ci.yml/badge.svg)](https://github.com/Hmbown/MLXSmith/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/pypi/pyversions/mlxsmith)](https://pypi.org/project/mlxsmith/)
 [![License](https://img.shields.io/github/license/Hmbown/MLXSmith)](LICENSE)
 
-Fine-tune language models on Apple Silicon. SFT, preference optimization, reinforcement learning, distillation, and serving — all native to MLX.
+**Fine-tune language models on Apple Silicon.**
 
-**Status:** Alpha (v0.1.9) · Validated on Qwen3-4B and Qwen3-1.7B
+MLXSmith is a training toolkit built on [MLX](https://github.com/ml-explore/mlx) that brings supervised fine-tuning, preference optimization, reinforcement learning, knowledge distillation, and model serving to your Mac. Every training algorithm runs natively on the Metal GPU — no cloud required.
 
----
+> **Status:** Alpha (v0.1.9). Validated on Qwen3-4B and Qwen3-1.7B.
 
-## Features
+## Installation
 
-- **Supervised fine-tuning** — LoRA and QLoRA with configurable optimizers
-- **Preference optimization** — DPO, ORPO, IPO, CPO, SimPO, and more
-- **Reinforcement learning** — GRPO with verifier-based rewards
-- **Knowledge distillation** — Offline and online preference distillation
-- **KTO** — Kahneman-Tversky Optimization from binary feedback
-- **Online DPO** — Live preference tuning with LLM judge scoring
-- **Self-verification training** — Policy gradient from self-assessed rewards
-- **Synthetic data generation** — Generate, evolve, and filter training data
-- **External model backends** — Use Codex, Claude, Gemini CLIs or any OpenAI-compatible API for data generation and judging
-- **Recursive training** — Self-improving RLM loop with task generation and gating
-- **Serving** — OpenAI-compatible API with streaming
-- **Web dashboard (Next.js)** — Models, adapters, training, eval, chat, and serving UI
-- **Environment plugins** — Reusable task and verifier packages for RL training
-- **Experimental mHC adapters** — Optional block-local mHC patching for MLX transformer blocks (not a speedup)
-
-## Requirements
-
-- macOS with Apple Silicon (M1 or later)
-- Python 3.10+
-
-Data tools, configuration, and project scaffolding work on any platform.
-
-## Install
+**Requirements:** macOS with Apple Silicon (M1 or later) and Python 3.10+. Data tools, configuration, and project scaffolding work on any platform.
 
 ```bash
 pip install "mlxsmith[all]"
 ```
 
 <details>
-<summary>Selective install</summary>
+<summary>Install only what you need</summary>
 
 ```bash
-# Core only (data tools, config, scaffolding)
+# Core only — data tools, config, scaffolding (any platform)
 pip install mlxsmith
 
-# Apple Silicon training
+# Training on Apple Silicon
 pip install "mlxsmith[mlx,llm]"
 
 # Training + serving
@@ -56,95 +35,46 @@ pip install "mlxsmith[mlx,llm,serve]"
 
 </details>
 
-## Quickstart
+## Quick Start
 
 ```bash
-# 1. Create a project
+# Create a project
 mlxsmith init myproj && cd myproj
 
-# 2. Verify your environment
+# Verify your environment
 mlxsmith doctor
 
-# 3. Pull a model
+# Download a model
 mlxsmith pull mlx-community/Qwen3-4B-Instruct-2507-4bit
 
-# 4. Pull training data
+# Download training data
 mlxsmith data pull --preset alpaca
 
-# 5. Fine-tune
+# Fine-tune with LoRA
 mlxsmith sft \
   --model cache/mlx/mlx-community__Qwen3-4B-Instruct-2507-4bit \
   --data data/sft
 
-# 6. Serve the result
+# Serve the result
 mlxsmith serve --model runs/sft_0001/adapter --port 8080
 ```
 
 See [Getting Started](docs/getting-started.md) for a complete walkthrough.
 
-## End-to-end Smoke (Qwen3-1.7B)
+## Training
 
-This repo includes an end-to-end smoke run that validates the full pipeline
-(SFT → Pref → RFT → RLM) on `Qwen/Qwen3-1.7B-MLX-4bit`.
+MLXSmith supports the full model improvement pipeline — from supervised learning through reinforcement and distillation.
 
-```bash
-mlxsmith pull Qwen/Qwen3-1.7B-MLX-4bit
-./scripts/exp_qwen3_1.7b_mlx_4bit_e2e_smoke.sh
-
-# Optional: also smoke-test `mlxsmith serve` + OpenAI-compatible endpoint
-SMOKE_SERVE=1 ./scripts/exp_qwen3_1.7b_mlx_4bit_e2e_smoke.sh
-```
-
-The smoke run uses `qwen3_1.7b_mlx_4bit_smoke.yaml` and the tiny datasets in
-`data/sft` and `data/prefs`.
-
-## Repo SFT (Qwen3-1.7B)
-
-To build a small “MLXSmith repo assistant” adapter on top of `Qwen/Qwen3-1.7B-MLX-4bit`,
-use the repo-grounded SFT script:
-
-```bash
-# 1) Generate seed prompts from the repo
-python3 scripts/make_repo_seed_prompts.py --out data/mlxsmith_prompts.jsonl
-
-# 2) Generate responses (via Codex) + train LoRA
-NUM=300 BATCH=4 ITERS=2000 LR=2e-4 ./scripts/exp_qwen3_1.7b_mlx_4bit_repo_sft.sh
-```
-
-Notes:
-
-- The script uses `codex exec` by default. Override with `MLXSMITH_CLI_CODEX_CMD` if needed.
-- Qwen output sanitization is enabled in the included configs via `infer.strip_think: true`.
-
-## Web Dashboard (Optional)
-
-Run the API server, then start the Next.js dashboard:
-
-```bash
-# Terminal 1: start the OpenAI-compatible API
-mlxsmith serve --model cache/mlx/mlx-community__Qwen3-4B-Instruct-2507-4bit --port 8080
-
-# Terminal 2: start the dashboard
-cd apps/web
-npm install
-npm run dev
-```
-
-The dashboard defaults to `http://localhost:8080` for the API base URL (change in Settings if needed).
-
-## Training Modes
-
-| Mode | Command | Input Format | Use Case |
-|------|---------|-------------|----------|
-| [SFT](docs/cli/sft.md) | `mlxsmith sft` | `{prompt, response}` | Instruction-following via LoRA |
-| [Preference](docs/cli/preference-training.md) | `mlxsmith pref` | `{prompt, chosen, rejected}` | Alignment with DPO, ORPO, and others |
+| Mode | Command | Data Format | Description |
+|------|---------|-------------|-------------|
+| [SFT](docs/cli/sft.md) | `mlxsmith sft` | `{prompt, response}` | Supervised fine-tuning with LoRA/QLoRA |
+| [Preference](docs/cli/preference-training.md) | `mlxsmith pref` | `{prompt, chosen, rejected}` | DPO, ORPO, IPO, CPO, SimPO, TDPO |
 | [KTO](docs/cli/kto.md) | `mlxsmith kto` | `{prompt, response, label}` | Binary good/bad feedback |
 | [GRPO](docs/cli/reinforcement-training.md) | `mlxsmith rft` | Environment + verifier | Reward-driven reinforcement learning |
-| [Online DPO](docs/cli/online-dpo.md) | `mlxsmith online-dpo` | `{prompt}` | Online preference with LLM judge |
-| [Self-verify](docs/cli/self-verify.md) | `mlxsmith self-verify` | `{prompt}` | Self-verification reward signal |
-| [Distillation](docs/cli/distillation.md) | `mlxsmith distill` | `{prompt}` | Teacher-to-student transfer |
-| [Judge](docs/cli/judge.md) | `mlxsmith judge` | Judge-format data | Train a scoring model |
-| [Pipeline](docs/cli/sft.md#pipeline) | `mlxsmith pipeline` | Combined | SFT then Pref then RFT then RLM |
+| [Online DPO](docs/cli/online-dpo.md) | `mlxsmith online-dpo` | `{prompt}` | Live preference tuning with LLM judge |
+| [Self-Verify](docs/cli/self-verify.md) | `mlxsmith self-verify` | `{prompt}` | Policy gradient from self-assessed rewards |
+| [Distillation](docs/cli/distillation.md) | `mlxsmith distill` | `{prompt}` | Teacher-to-student knowledge transfer |
+| [Pipeline](docs/cli/sft.md#pipeline) | `mlxsmith pipeline` | Combined | Chain SFT, preference, RFT, and RLM stages |
 
 See [Concepts](docs/concepts.md) for an explanation of each training mode.
 
@@ -152,80 +82,115 @@ See [Concepts](docs/concepts.md) for an explanation of each training mode.
 
 | Tool | Command | Description |
 |------|---------|-------------|
-| [Data](docs/cli/data.md) | `mlxsmith data` | Import, split, validate, and pull datasets |
+| [Data](docs/cli/data.md) | `mlxsmith data` | Import, split, validate, and download datasets |
 | [Synthetic](docs/cli/synthetic-data.md) | `mlxsmith synthetic` | Generate and evolve training data |
-| [Eval](docs/cli/eval-and-bench.md) | `mlxsmith eval` | Run evaluation suites with pass@k |
+| [Eval](docs/cli/eval-and-bench.md) | `mlxsmith eval` | Run evaluation suites with pass@k metrics |
 | [Bench](docs/cli/eval-and-bench.md) | `mlxsmith bench` | Benchmark inference and training throughput |
-| [Serve](docs/cli/serving.md) | `mlxsmith serve` | OpenAI-compatible model server |
-| [RLM](docs/cli/rlm.md) | `mlxsmith rlm` | Recursive training loop + REPL-based inference |
+| [Serve](docs/cli/serving.md) | `mlxsmith serve` | OpenAI-compatible API server with streaming |
+| [RLM](docs/cli/rlm.md) | `mlxsmith rlm` | Recursive self-improving training loop |
 
 ## External Model Backends
 
-MLXSmith can use powerful cloud models for synthetic data generation and judging while keeping fine-tuning local on Apple Silicon.
+Use cloud models for data generation and judging while keeping training local on Apple Silicon.
 
-Supported backends:
-
-- `cli` — shell out to Codex/Claude/Gemini CLIs (or any command you provide)
-- `openai` — call any OpenAI-compatible Chat Completions endpoint
-
-Note: training commands (`sft`, `pref`, `rft`, `rlm` loop) still require a local training backend like `mlx-lm`.
-
-**CLI Backend** — Shell out to Codex, Claude, or Gemini CLIs:
+**CLI backend** — shell out to Codex, Claude, or Gemini:
 
 ```bash
-# Use a CLI model for prompt generation
 export MLXSMITH__MODEL__BACKEND=cli
 export MLXSMITH_CLI_CODEX_CMD='codex exec --full-auto --model gpt-5.2'
-
-# If your CLI expects the prompt as an argument instead of stdin:
-# export MLXSMITH_CLI_PROMPT_FLAG='--prompt'
 
 mlxsmith synthetic prompts \
   --model codex \
   --seed-prompts data/seeds.jsonl \
   --num 100 \
   --out data/prompts.jsonl
-
-# Use a CLI model as judge for filtering
-mlxsmith synthetic sft \
-  --model codex \
-  --judge-backend cli \
-  --judge-model claude \
-  --prompts data/prompts.jsonl \
-  --out data/sft.jsonl
 ```
 
-**OpenAI Backend** — Use any OpenAI-compatible API:
+**OpenAI backend** — any OpenAI-compatible API:
 
 ```bash
 export MLXSMITH__MODEL__BACKEND=openai
 export OPENAI_API_KEY="sk-..."
-export MLXSMITH_API_BASE="https://api.openai.com/v1"  # or any compatible endpoint
 
 mlxsmith synthetic prompts \
   --model gpt-4o \
   --out data/prompts.jsonl
 ```
 
-This enables cloud-quality data generation with local training — use frontier models to create and filter training data, then fine-tune efficiently on your Mac.
+Training commands (`sft`, `pref`, `rft`, `rlm`) still require a local MLX backend.
+
+## Web Dashboard
+
+MLXSmith includes a Next.js dashboard for managing models, training runs, evaluation, chat, and serving.
+
+```bash
+# Terminal 1: start the API
+mlxsmith serve --model <model-or-adapter> --port 8080
+
+# Terminal 2: start the dashboard
+cd apps/web && npm install && npm run dev
+```
+
+A native macOS app is also available under `apps/macos/`.
+
+## Architecture
+
+```
+src/mlxsmith/
+├── cli.py                  # CLI entry point (Typer)
+├── config.py               # Pydantic config with env/file/CLI precedence
+├── train/                  # Training algorithms (SFT, DPO, GRPO, KTO, ...)
+├── rlm/                    # Recursive language model training loop
+├── llm/                    # Backend abstraction (MLX, OpenAI, CLI, mock)
+├── verifiers/              # Reward verifiers (regex, pytest, JSON schema, LLM judge, ...)
+├── sdk/                    # Loss registry, training/sampling clients
+├── api/                    # FastAPI handlers and schemas
+├── orchestrator/           # Multi-process job scheduling
+├── envs/                   # Environment plugin system
+└── server.py               # OpenAI-compatible serving
+```
+
+## Configuration
+
+MLXSmith uses a layered configuration system. Settings are resolved in order of precedence:
+
+1. **CLI arguments** (highest)
+2. **Config file** (YAML, TOML, or JSON)
+3. **Environment variables** (`MLXSMITH__SECTION__KEY`)
+4. **Defaults**
+
+```bash
+# Show resolved configuration
+mlxsmith config show
+
+# Create a default config file
+mlxsmith config init mlxsmith.yaml
+
+# Validate a config file
+mlxsmith config validate mlxsmith.yaml
+```
+
+See [Configuration](docs/cli/configuration.md) for the full reference.
 
 ## Documentation
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](docs/getting-started.md) | Full setup walkthrough |
+| [Getting Started](docs/getting-started.md) | Installation and first training run |
 | [Concepts](docs/concepts.md) | Training modes explained |
 | [CLI Reference](docs/cli/README.md) | All commands with examples |
+| [Configuration](docs/cli/configuration.md) | Config system and options |
 | [Verifiers](docs/VERIFIERS.md) | Verifier API and composition |
 | [Environments](docs/ENVIRONMENTS.md) | Task environment plugins |
-| [Project Format](docs/PROJECT_FORMAT.md) | Run artifacts and layout |
-| [Configuration](docs/cli/configuration.md) | Config system and options |
+| [Project Format](docs/PROJECT_FORMAT.md) | Run artifacts and directory layout |
 | [Compatibility](docs/COMPATIBILITY.md) | Tested versions and models |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |
 | [FAQ](docs/FAQ.md) | Frequently asked questions |
-| [Contributing](CONTRIBUTING.md) | How to contribute and run tests |
-| [Changelog](CHANGELOG.md) | Release notes |
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and pull request guidelines.
 
 ## License
 
-MIT
+MLXSmith is released under the [MIT License](LICENSE).

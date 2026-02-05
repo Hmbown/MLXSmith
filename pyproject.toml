@@ -37,8 +37,10 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/Hmbown/MLXSmith"
+Documentation = "https://github.com/Hmbown/MLXSmith/tree/main/docs"
 Repository = "https://github.com/Hmbown/MLXSmith"
 Issues = "https://github.com/Hmbown/MLXSmith/issues"
+Changelog = "https://github.com/Hmbown/MLXSmith/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 mlx = ["mlx>=0.30.4"]
