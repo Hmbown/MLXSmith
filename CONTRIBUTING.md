@@ -5,7 +5,7 @@ Thank you for your interest in improving MLXSmith. This document covers the deve
 ## Development Setup
 
 ```bash
-git clone https://github.com/Hmbown/MLXSmith.git
+git clone https://github.com/YOUR_USERNAME/MLXSmith.git
 cd MLXSmith
 python -m venv .venv
 source .venv/bin/activate
