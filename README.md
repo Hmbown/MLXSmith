@@ -6,7 +6,7 @@
 
 Fine-tune language models on Apple Silicon. SFT, preference optimization, reinforcement learning, distillation, and serving — all native to MLX.
 
-**Status:** Alpha (v0.1.8) · Validated on Qwen3-4B
+**Status:** Alpha (v0.1.9) · Validated on Qwen3-4B and Qwen3-1.7B
 
 ---
 
@@ -81,6 +81,40 @@ mlxsmith serve --model runs/sft_0001/adapter --port 8080
 ```
 
 See [Getting Started](docs/getting-started.md) for a complete walkthrough.
+
+## End-to-end Smoke (Qwen3-1.7B)
+
+This repo includes an end-to-end smoke run that validates the full pipeline
+(SFT → Pref → RFT → RLM) on `Qwen/Qwen3-1.7B-MLX-4bit`.
+
+```bash
+mlxsmith pull Qwen/Qwen3-1.7B-MLX-4bit
+./scripts/exp_qwen3_1.7b_mlx_4bit_e2e_smoke.sh
+
+# Optional: also smoke-test `mlxsmith serve` + OpenAI-compatible endpoint
+SMOKE_SERVE=1 ./scripts/exp_qwen3_1.7b_mlx_4bit_e2e_smoke.sh
+```
+
+The smoke run uses `qwen3_1.7b_mlx_4bit_smoke.yaml` and the tiny datasets in
+`data/sft` and `data/prefs`.
+
+## Repo SFT (Qwen3-1.7B)
+
+To build a small “MLXSmith repo assistant” adapter on top of `Qwen/Qwen3-1.7B-MLX-4bit`,
+use the repo-grounded SFT script:
+
+```bash
+# 1) Generate seed prompts from the repo
+python3 scripts/make_repo_seed_prompts.py --out data/mlxsmith_prompts.jsonl
+
+# 2) Generate responses (via Codex) + train LoRA
+NUM=300 BATCH=4 ITERS=2000 LR=2e-4 ./scripts/exp_qwen3_1.7b_mlx_4bit_repo_sft.sh
+```
+
+Notes:
+
+- The script uses `codex exec` by default. Override with `MLXSMITH_CLI_CODEX_CMD` if needed.
+- Qwen output sanitization is enabled in the included configs via `infer.strip_think: true`.
 
 ## Web Dashboard (Optional)
 

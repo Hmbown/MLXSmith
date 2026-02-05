@@ -1,0 +1,47 @@
+model:
+  id: cache/mlx/Qwen__Qwen3-1.7B-MLX-4bit
+  backend: mlx-lm
+  dtype: bf16
+  quantization: none
+  max_seq_len: 4096
+  trust_remote_code: false
+  use_chat_template: true
+accel:
+  backend: none
+  compile_cache: cache/compiled_kernels
+train:
+  seed: 1337
+  batch_size: 1
+  grad_accum: 8
+  lr: 2e-4
+  weight_decay: 0.0
+  optimizer: adamw
+  optimizer_kwargs: {}
+  iters: 2000
+  save_every: 200
+  eval_every: 0
+  log_every: 10
+  train_on_prompt: false
+  max_grad_norm: 1.0
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+  - q_proj
+  - v_proj
+  - o_proj
+  num_layers: 0
+  scale: null
+  fine_tune_type: lora
+infer:
+  max_new_tokens: 256
+  temperature: 0.2
+  top_p: 1.0
+  top_k: null
+  strip_think: true
+logging:
+  level: INFO
+  file: null
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+

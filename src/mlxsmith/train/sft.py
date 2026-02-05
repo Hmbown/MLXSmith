@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import signal
 from pathlib import Path
 
 from rich.console import Console
@@ -107,58 +108,91 @@ def run_sft(
 
     metrics_kind = metrics_kind or run_kind or "sft"
 
-    for step in range(1, total + 1):
-        row = rng.choice(rows)
-        prompt, response = _row_to_prompt_response(row)
-        if not response:
-            continue
+    stop_requested = False
+    stop_sig: int | None = None
+    prev_sigint = signal.getsignal(signal.SIGINT)
+    prev_sigterm = signal.getsignal(signal.SIGTERM)
 
-        text = f"{prompt}{response}"
-        prompt_ids = llm.encode(prompt)
-        ids = llm.encode(text)
-        max_len = int(cfg.model.max_seq_len)
-        if max_len and len(ids) > max_len:
-            overflow = len(ids) - max_len
-            ids = ids[overflow:]
-            prompt_ids = prompt_ids[overflow:] if overflow < len(prompt_ids) else []
+    def _request_stop(sig, _frame) -> None:  # pragma: no cover
+        nonlocal stop_requested, stop_sig
+        stop_requested = True
+        stop_sig = sig
 
-        def loss_fn(_model):
-            return llm.sft_loss(ids, train_on_prompt=train_on_prompt, prompt_len=len(prompt_ids))
+    signal.signal(signal.SIGINT, _request_stop)
+    signal.signal(signal.SIGTERM, _request_stop)
 
-        lval, grads = llm.value_and_grad(loss_fn)
-        accum_loss += float(lval.item()) if hasattr(lval, "item") else float(lval)
-        accum_count += 1
-        if grads is not None:
-            accum_grads = tree_add(accum_grads, grads)
+    last_step = 0
+    saved_step = 0
+    try:
+        for step in range(1, total + 1):
+            if stop_requested:
+                break
+            row = rng.choice(rows)
+            prompt, response = _row_to_prompt_response(row)
+            if not response:
+                continue
 
-        if step % grad_accum == 0:
-            if accum_grads is not None:
-                scaled = tree_scale(accum_grads, 1.0 / grad_accum)
-                if max_grad_norm > 0:
-                    scaled = clip_grad_norm(scaled, max_grad_norm)
-                llm.apply_grads(opt, scaled)
-            accum_grads = None
-            accum_loss = 0.0
-            accum_count = 0
+            text = f"{prompt}{response}"
+            prompt_ids = llm.encode(prompt)
+            ids = llm.encode(text)
+            max_len = int(cfg.model.max_seq_len)
+            if max_len and len(ids) > max_len:
+                overflow = len(ids) - max_len
+                ids = ids[overflow:]
+                prompt_ids = prompt_ids[overflow:] if overflow < len(prompt_ids) else []
 
-        if step % cfg.train.log_every == 0 or step == 1 or step == total:
-            avg_loss = (accum_loss / max(1, accum_count)) if accum_count else (
-                float(lval.item()) if hasattr(lval, "item") else float(lval)
-            )
-            write_jsonl(
-                run.metrics_path,
-                [
-                    {
-                        "ts": now_ts(),
-                        "step": step,
+            def loss_fn(_model):
+                return llm.sft_loss(ids, train_on_prompt=train_on_prompt, prompt_len=len(prompt_ids))
+
+            lval, grads = llm.value_and_grad(loss_fn)
+            accum_loss += float(lval.item()) if hasattr(lval, "item") else float(lval)
+            accum_count += 1
+            if grads is not None:
+                accum_grads = tree_add(accum_grads, grads)
+
+            if step % grad_accum == 0:
+                if accum_grads is not None:
+                    scaled = tree_scale(accum_grads, 1.0 / grad_accum)
+                    if max_grad_norm > 0:
+                        scaled = clip_grad_norm(scaled, max_grad_norm)
+                    llm.apply_grads(opt, scaled)
+                accum_grads = None
+                accum_loss = 0.0
+                accum_count = 0
+
+            if step % cfg.train.log_every == 0 or step == 1 or step == total:
+                avg_loss = (accum_loss / max(1, accum_count)) if accum_count else (
+                    float(lval.item()) if hasattr(lval, "item") else float(lval)
+                )
+                write_jsonl(
+                    run.metrics_path,
+                    [
+                        {
+                            "ts": now_ts(),
+                            "step": step,
+                            "kind": metrics_kind,
+                            "loss": avg_loss,
+                            "accel": backend.name,
+                        }
+                    ],
+                )
+
+            if step % cfg.train.save_every == 0 or step == total:
+                llm.save_adapter(
+                    str(run.adapter_dir),
+                    metadata={
+                        "base_model": base_model,
+                        "source_adapter": str(adapter_path) if adapter_path else None,
+                        "run": run.run_dir.name,
                         "kind": metrics_kind,
-                        "loss": avg_loss,
-                        "accel": backend.name,
-                    }
-                ],
-            )
+                    },
+                )
+                saved_step = step
 
-        if step % cfg.train.save_every == 0 or step == total:
+            last_step = step
+
+        if stop_requested and last_step and saved_step < last_step:
+            console.print("[yellow]Stop requested; saving adapter before exit[/yellow]")
             llm.save_adapter(
                 str(run.adapter_dir),
                 metadata={
@@ -166,8 +200,14 @@ def run_sft(
                     "source_adapter": str(adapter_path) if adapter_path else None,
                     "run": run.run_dir.name,
                     "kind": metrics_kind,
+                    "stopped": True,
+                    "stopped_step": last_step,
+                    "stopped_signal": int(stop_sig) if stop_sig is not None else None,
                 },
             )
+    finally:
+        signal.signal(signal.SIGINT, prev_sigint)
+        signal.signal(signal.SIGTERM, prev_sigterm)
 
     console.print(f"[green]Saved adapter[/green] {run.adapter_dir}")
     return run

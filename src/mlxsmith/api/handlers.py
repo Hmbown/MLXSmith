@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import shutil
 import time
@@ -165,14 +166,31 @@ def _messages_to_prompt(
     messages: List[Any],
     tokenizer: Any,
     *,
-    use_chat_template: bool = True
+    use_chat_template: bool = True,
+    system_prefix: str | None = None,
 ) -> str:
     """Convert chat messages to prompt string."""
     if use_chat_template and hasattr(tokenizer, "apply_chat_template"):
         msgs = [{"role": m.role, "content": m.content} for m in messages]
+        if system_prefix:
+            if msgs and msgs[0].get("role") == "system":
+                msgs[0]["content"] = f"{system_prefix}\n\n{msgs[0].get('content','')}".strip()
+            else:
+                msgs.insert(0, {"role": "system", "content": system_prefix})
         return tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
     # Fallback
-    return "\n".join([f"{m.role}: {m.content}" for m in messages]) + "\nassistant:"
+    lines: List[str] = []
+    if system_prefix:
+        if messages and getattr(messages[0], "role", None) == "system":
+            merged = f"{system_prefix}\n\n{getattr(messages[0], 'content', '')}".strip()
+            lines.append(f"system: {merged}")
+            lines.extend([f"{m.role}: {m.content}" for m in messages[1:]])
+        else:
+            lines.append(f"system: {system_prefix}")
+            lines.extend([f"{m.role}: {m.content}" for m in messages])
+    else:
+        lines.extend([f"{m.role}: {m.content}" for m in messages])
+    return "\n".join(lines) + "\nassistant:"
 
 
 def _truncate_stop(text: str, stop: Optional[List[str]]) -> str:
@@ -187,6 +205,41 @@ def _truncate_stop(text: str, stop: Optional[List[str]]) -> str:
         if pos != -1:
             idx = pos if idx is None else min(idx, pos)
     return text if idx is None else text[:idx]
+
+
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", flags=re.DOTALL | re.IGNORECASE)
+_SPECIAL_MARKER_RE = re.compile(r"<\|[^|]{1,80}\|>")
+
+
+def _strip_think(text: str) -> str:
+    """Best-effort removal of Qwen-style `<think>` blocks from model output."""
+    if not text:
+        return text
+    lower = text.lower()
+    if "<think" not in lower and "</think>" not in lower and "<|" not in text:
+        return text
+    cleaned = _THINK_BLOCK_RE.sub("", text)
+
+    # If we still have a closing tag, drop everything up to it.
+    if "</think>" in cleaned.lower():
+        cleaned = re.split(r"</think>", cleaned, flags=re.IGNORECASE)[-1]
+
+    # Handle the common "open <think> without closing </think>" case by
+    # stripping from the first <think> up to the first blank line.
+    lower_cleaned = cleaned.lower()
+    idx = lower_cleaned.find("<think>")
+    if idx != -1:
+        after = cleaned[idx + len("<think>") :]
+        m = re.search(r"\n\s*\n", after)
+        if m:
+            cleaned = (cleaned[:idx] + after[m.end() :]).lstrip()
+        else:
+            cleaned = (cleaned[:idx] + after).lstrip()
+
+    # Strip common chat template markers (e.g. Qwen eos token `<|im_end|>`).
+    cleaned = _SPECIAL_MARKER_RE.sub("", cleaned)
+
+    return cleaned.lstrip("\n")
 
 
 def _get_cache_dir() -> Path:
@@ -289,10 +342,19 @@ def create_router(
         Supports both streaming (SSE) and non-streaming responses.
         Supports logprobs parameter for returning token logprobs.
         """
+        strip_think = bool(getattr(getattr(cfg, "infer", None), "strip_think", False))
+        system_prefix = None
+        if strip_think:
+            system_prefix = (
+                "Answer directly. Do not output <think> blocks, reasoning, or analysis. "
+                "Output only the final answer."
+            )
+
         prompt = _messages_to_prompt(
             request.messages,
             llm_backend.tokenizer,
-            use_chat_template=getattr(cfg.model, "use_chat_template", True)
+            use_chat_template=getattr(cfg.model, "use_chat_template", True),
+            system_prefix=system_prefix,
         )
         
         # Determine if we need logprobs
@@ -323,9 +385,16 @@ def create_router(
                         ):
                             if out.text:
                                 acc += out.text
-                                chunk = _truncate_stop(acc, request.stop)
+                                acc_view = _strip_think(acc) if strip_think else acc
+                                chunk = _truncate_stop(acc_view, request.stop)
                                 if len(chunk) < len(emitted):
-                                    break
+                                    # If <think> stripping caused the visible text to shrink,
+                                    # reset the emitted cursor and keep going so we can still
+                                    # stream the final answer.
+                                    if request.stop and len(chunk) < len(acc_view):
+                                        break
+                                    emitted = chunk
+                                    continue
                                 delta = chunk[len(emitted):]
                                 emitted = chunk
                                 
@@ -341,7 +410,7 @@ def create_router(
                                 )
                                 yield f"data: {chunk_data.model_dump_json()}\n\n"
                                 
-                                if request.stop and len(chunk) < len(acc):
+                                if request.stop and len(chunk) < len(acc_view):
                                     break
                             if getattr(out, "finish_reason", None):
                                 break
@@ -366,6 +435,8 @@ def create_router(
                             )
                         completion = gen.text[len(prompt):] if gen.text.startswith(prompt) else gen.text
                         completion = _truncate_stop(completion, request.stop)
+                        if strip_think:
+                            completion = _strip_think(completion)
                         
                         chunk_data = ChatCompletionChunk(
                             id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -415,6 +486,8 @@ def create_router(
                 )
             completion = gen.text[len(prompt):] if gen.text.startswith(prompt) else gen.text
             completion = _truncate_stop(completion, request.stop)
+            if strip_think:
+                completion = _strip_think(completion)
             
             prompt_tokens = len(llm_backend.encode(prompt))
             completion_tokens = len(llm_backend.encode(completion))

@@ -138,28 +138,72 @@ def run_rlm(
     base_model, initial_adapter, _meta = resolve_model_spec(project_root, model_spec, cfg)
     infer_ptr_path = weights_dir / "infer.json"
     train_ptr_path = weights_dir / "train.json"
-    infer_ptr = load_pointer(infer_ptr_path, base_model=base_model, name="inference")
-    train_ptr = load_pointer(train_ptr_path, base_model=base_model, name="trainer")
+    initial_adapter_path = str(initial_adapter) if initial_adapter else None
 
-    if initial_adapter and not infer_ptr.adapter_path:
+    # If we're not resuming, treat model_spec as the source of truth and reset
+    # pointers. This avoids accidental adapter/base-model mismatches when
+    # switching models between runs.
+    if not resume:
         infer_ptr = WeightPointer(
             base_model=base_model,
-            adapter_path=str(initial_adapter),
-            iteration=state.last_iteration,
+            adapter_path=initial_adapter_path,
+            iteration=0,
             updated_at=now_ts(),
             name="inference",
         )
-        save_pointer(infer_ptr_path, infer_ptr)
-
-    if initial_adapter and not train_ptr.adapter_path:
         train_ptr = WeightPointer(
             base_model=base_model,
-            adapter_path=str(initial_adapter),
-            iteration=state.last_iteration,
+            adapter_path=initial_adapter_path,
+            iteration=0,
             updated_at=now_ts(),
             name="trainer",
         )
+        save_pointer(infer_ptr_path, infer_ptr)
         save_pointer(train_ptr_path, train_ptr)
+    else:
+        infer_ptr = load_pointer(infer_ptr_path, base_model=base_model, name="inference")
+        train_ptr = load_pointer(train_ptr_path, base_model=base_model, name="trainer")
+
+        # If base model changed since the last run, clear stale pointers.
+        if infer_ptr.base_model != base_model:
+            infer_ptr = WeightPointer(
+                base_model=base_model,
+                adapter_path=None,
+                iteration=state.last_iteration,
+                updated_at=now_ts(),
+                name="inference",
+            )
+            save_pointer(infer_ptr_path, infer_ptr)
+        if train_ptr.base_model != base_model:
+            train_ptr = WeightPointer(
+                base_model=base_model,
+                adapter_path=None,
+                iteration=state.last_iteration,
+                updated_at=now_ts(),
+                name="trainer",
+            )
+            save_pointer(train_ptr_path, train_ptr)
+
+        # Seed pointers from model_spec adapter when starting a fresh model lineage.
+        if initial_adapter_path and not infer_ptr.adapter_path:
+            infer_ptr = WeightPointer(
+                base_model=base_model,
+                adapter_path=initial_adapter_path,
+                iteration=state.last_iteration,
+                updated_at=now_ts(),
+                name="inference",
+            )
+            save_pointer(infer_ptr_path, infer_ptr)
+
+        if initial_adapter_path and not train_ptr.adapter_path:
+            train_ptr = WeightPointer(
+                base_model=base_model,
+                adapter_path=initial_adapter_path,
+                iteration=state.last_iteration,
+                updated_at=now_ts(),
+                name="trainer",
+            )
+            save_pointer(train_ptr_path, train_ptr)
 
     if resume and state.current_adapter:
         train_ptr = WeightPointer(
@@ -508,6 +552,7 @@ class RLMOrchestrator:
             dtype=self.cfg.model.dtype,
             trust_remote_code=self.cfg.model.trust_remote_code,
             use_chat_template=self.cfg.model.use_chat_template,
+            strip_think=bool(getattr(self.cfg.infer, "strip_think", False)),
             weights_dir=self.weights_dir,
             hot_reload=True,
         )

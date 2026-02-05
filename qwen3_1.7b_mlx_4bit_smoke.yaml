@@ -1,0 +1,111 @@
+model:
+  id: cache/mlx/Qwen__Qwen3-1.7B-MLX-4bit
+  backend: mlx-lm
+  dtype: bf16
+  quantization: none
+  max_seq_len: 4096
+  trust_remote_code: false
+  use_chat_template: true
+accel:
+  backend: none
+  compile_cache: cache/compiled_kernels
+train:
+  seed: 1337
+  batch_size: 1
+  grad_accum: 2
+  lr: 1e-5
+  weight_decay: 0.0
+  optimizer: adamw
+  optimizer_kwargs: {}
+  iters: 6
+  save_every: 3
+  eval_every: 3
+  log_every: 1
+  train_on_prompt: false
+  max_grad_norm: 1.0
+lora:
+  r: 16
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+  - q_proj
+  - v_proj
+  - o_proj
+  num_layers: 0
+  scale: null
+  fine_tune_type: lora
+pref:
+  algo: dpo
+  beta: 0.1
+  kl_coeff: 0.0
+  reference_model: null
+rft:
+  algo: grpo
+  rollouts: 2
+  kl_coeff: 0.02
+  max_steps_per_task: 1
+  temperature: 0.8
+  max_new_tokens: 32
+  normalize_advantage: true
+  reference_model: null
+infer:
+  max_new_tokens: 128
+  temperature: 0.7
+  top_p: 1.0
+  top_k: null
+  strip_think: true
+serve:
+  api: openai
+  host: 0.0.0.0
+  port: 8080
+  ui: false
+  stream: true
+rlm:
+  iterations: 1
+  sleep_between: 0
+  tasks_per_iter: 1
+  rollouts_per_task: 1
+  attempts_per_task: 1
+  corpus_max: 2000
+  mix_old_ratio: 0.4
+  hard_ratio: 0.6
+  mutations_per_task: 0
+  use_task_mutation: false
+  gating: strict
+  gating_threshold: 0.0
+  gating_ema_alpha: 0.2
+  infer_staleness: 0
+  require_recursion: false
+  task_domains:
+  - strings
+  benchmark_suite: eval/suites/rlm_bench.yaml
+  holdout_suite: eval/suites/rlm_holdout.yaml
+  verifier_timeout_s: 30
+  verifier_backend: pytest
+  docker_image: python:3.11-slim
+  docker_memory_mb: 512
+  docker_cpus: 1.0
+  docker_pids: 128
+  task_gen_max_new_tokens: 256
+  similarity_threshold: 0.9
+  min_task_desc_len: 10
+  min_task_asserts: 2
+  max_task_prompt_len: 1000
+  min_task_tests_len: 20
+  max_task_tests_len: 4000
+  blocked_task_patterns:
+  - \bsubprocess\b
+  - \bos\.system\b
+  - \bshutil\.rmtree\b
+  - \brm\s+-rf\b
+  - \brequests\b
+  - \burllib\b
+  - \bsocket\b
+  - \bhttp[s]?://
+  - \bpip\s+install\b
+  - \bapt-get\b
+  - \bbrew\s+install\b
+logging:
+  level: INFO
+  file: null
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

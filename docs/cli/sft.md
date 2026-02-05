@@ -62,6 +62,8 @@ Training writes to a run directory (e.g., `runs/sft_0001/`):
 - `metrics.jsonl` — loss and throughput per step
 - `config.snapshot.yaml` — exact configuration used
 
+If you stop training early (Ctrl+C / SIGINT), MLXSmith saves the latest adapter before exiting.
+
 ## Typical workflows
 
 ### SFT on a preset dataset

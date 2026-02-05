@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 from .types import VerifyResult
 
@@ -55,7 +56,7 @@ def verify(
 
     try:
         proc = subprocess.run(
-            ["pytest", "-q"],
+            [sys.executable, "-m", "pytest", "-q"],
             cwd=str(wd),
             capture_output=True,
             text=True,

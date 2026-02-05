@@ -168,6 +168,7 @@ class InferConfig(BaseModel):
     temperature: float = 0.7
     top_p: float = 1.0
     top_k: Optional[int] = None
+    strip_think: bool = False
     
     @field_validator("temperature")
     @classmethod

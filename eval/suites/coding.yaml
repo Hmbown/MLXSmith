@@ -1,0 +1,55 @@
+name: coding
+notes: |
+  Minimal coding suite for smoke-testing evaluation.
+  Each task includes embedded pytest tests.
+tasks:
+  - id: add
+    prompt: |
+      Write a Python function `add(a, b)` that returns the sum.
+
+      Return only Python code.
+    k: 1
+    max_new_tokens: 128
+    temperature: 0.2
+    tests: |
+      from main import add
+
+      def test_add():
+          assert add(1, 2) == 3
+          assert add(-1, 5) == 4
+
+  - id: is_sorted
+    prompt: |
+      Write a Python function `is_sorted(xs)` that returns True if xs is sorted in non-decreasing order.
+
+      Return only Python code.
+    k: 1
+    max_new_tokens: 160
+    temperature: 0.2
+    tests: |
+      from main import is_sorted
+
+      def test_is_sorted():
+          assert is_sorted([]) is True
+          assert is_sorted([1]) is True
+          assert is_sorted([1, 2, 2, 3]) is True
+          assert is_sorted([3, 1, 2]) is False
+
+  - id: balanced_parens
+    prompt: |
+      Write a Python function `balanced_parens(s)` that returns True if parentheses are balanced.
+      Only parentheses characters are present in s.
+
+      Return only Python code.
+    k: 1
+    max_new_tokens: 200
+    temperature: 0.2
+    tests: |
+      from main import balanced_parens
+
+      def test_balanced_parens():
+          assert balanced_parens("") is True
+          assert balanced_parens("()") is True
+          assert balanced_parens("(())") is True
+          assert balanced_parens("(()") is False
+          assert balanced_parens("())") is False

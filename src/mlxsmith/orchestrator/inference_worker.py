@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import json
+import re
 import signal
 import sys
 import time
@@ -42,9 +43,40 @@ class InferenceConfig:
     dtype: str = "bf16"
     trust_remote_code: bool = False
     use_chat_template: bool = True
+    strip_think: bool = False
     weights_dir: Optional[Path] = None
     hot_reload: bool = True
     reload_poll_interval: float = 2.0
+
+
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>\s*", flags=re.DOTALL | re.IGNORECASE)
+_SPECIAL_MARKER_RE = re.compile(r"<\|[^|]{1,80}\|>")
+_NO_THINK_SYSTEM_PREFIX = (
+    "Answer directly and concisely. Do not output <think> tags, hidden reasoning, or analysis. "
+    "Only provide the final answer."
+)
+
+
+def _strip_think(text: str) -> str:
+    if not text:
+        return text
+    lower = text.lower()
+    if "<think" not in lower and "</think>" not in lower and "<|" not in text:
+        return text
+    cleaned = _THINK_BLOCK_RE.sub("", text)
+    if "</think>" in cleaned.lower():
+        cleaned = re.split(r"</think>", cleaned, flags=re.IGNORECASE)[-1]
+    lower_cleaned = cleaned.lower()
+    idx = lower_cleaned.find("<think>")
+    if idx != -1:
+        after = cleaned[idx + len("<think>") :]
+        m = re.search(r"\n\s*\n", after)
+        if m:
+            cleaned = (cleaned[:idx] + after[m.end() :]).lstrip()
+        else:
+            cleaned = (cleaned[:idx] + after).lstrip()
+    cleaned = _SPECIAL_MARKER_RE.sub("", cleaned)
+    return cleaned.lstrip("\n")
 
 
 class InferenceWorker:
@@ -319,6 +351,8 @@ class InferenceWorker:
             )
             
             completion = gen.text[len(prompt):] if gen.text.startswith(prompt) else gen.text
+            if self.config.strip_think:
+                completion = _strip_think(completion)
             
             return {
                 "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -408,12 +442,29 @@ class InferenceWorker:
     
     def _messages_to_prompt(self, messages: List[Dict[str, str]]) -> str:
         """Convert chat messages to prompt."""
+        system_prefix = _NO_THINK_SYSTEM_PREFIX if self.config.strip_think else None
         if self.config.use_chat_template and hasattr(self._llm.tokenizer, "apply_chat_template"):
             msgs = [{"role": m["role"], "content": m["content"]} for m in messages]
+            if system_prefix:
+                if msgs and msgs[0].get("role") == "system":
+                    msgs[0]["content"] = f"{system_prefix}\n\n{msgs[0].get('content','')}".strip()
+                else:
+                    msgs.insert(0, {"role": "system", "content": system_prefix})
             return self._llm.tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
         
         # Fallback
-        return "\n".join([f"{m['role']}: {m['content']}" for m in messages]) + "\nassistant:"
+        lines: List[str] = []
+        if system_prefix:
+            if messages and messages[0].get("role") == "system":
+                merged = f"{system_prefix}\n\n{messages[0].get('content','')}".strip()
+                lines.append(f"system: {merged}")
+                lines.extend([f"{m['role']}: {m['content']}" for m in messages[1:]])
+            else:
+                lines.append(f"system: {system_prefix}")
+                lines.extend([f"{m['role']}: {m['content']}" for m in messages])
+        else:
+            lines.extend([f"{m['role']}: {m['content']}" for m in messages])
+        return "\n".join(lines) + "\nassistant:"
     
     async def _stream_generate(
         self,
@@ -439,8 +490,12 @@ class InferenceWorker:
             ):
                 if out.text:
                     acc += out.text
-                    delta = acc[len(emitted):]
-                    emitted = acc
+                    acc_view = _strip_think(acc) if self.config.strip_think else acc
+                    if len(acc_view) < len(emitted):
+                        emitted = acc_view
+                        continue
+                    delta = acc_view[len(emitted):]
+                    emitted = acc_view
                     
                     payload = {
                         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -463,6 +518,8 @@ class InferenceWorker:
                 top_p=top_p,
             )
             completion = gen.text[len(prompt):] if gen.text.startswith(prompt) else gen.text
+            if self.config.strip_think:
+                completion = _strip_think(completion)
             
             payload = {
                 "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",

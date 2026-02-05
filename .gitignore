@@ -22,6 +22,7 @@ env/
 # Local outputs
 bench/
 cache/
+eval/last/
 logs/
 models/
 runs/

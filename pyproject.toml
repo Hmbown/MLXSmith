@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlxsmith"
-version = "0.1.8"
+version = "0.1.9"
 description = "Apple Silicon MLX fine-tuning toolkit — SFT, DPO/ORPO, GRPO, distillation, and OpenAI-compatible serving."
 readme = {file = "README.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
@@ -58,6 +58,7 @@ all = [
   "mlx-lm>=0.30.5",
   "transformers>=5.0.0",
   "datasets>=3.0.0",
+  "pytest>=9.0.0",
   "fastapi>=0.128.0",
   "uvicorn>=0.40.0",
   "httpx>=0.28.0",

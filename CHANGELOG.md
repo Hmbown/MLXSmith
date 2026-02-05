@@ -4,6 +4,14 @@
 
 - (none)
 
+## 0.1.9
+
+- Qwen3-1.7B: end-to-end smoke scripts/configs and a repo-grounded SFT helper workflow.
+- Qwen output cleanup: optional `infer.strip_think` strips `<think>` blocks and chat markers like `<|im_end|>` (API + orchestrator).
+- Eval: suites can use embedded pytest `tests`; added `eval/suites/coding.yaml`; `mlxsmith serve` exposes `/eval/last/results.json`.
+- Fix: RLM weight pointers reset correctly when starting fresh or switching base models (prevents LoRA shape mismatches).
+- Fix: SFT saves the latest adapter on SIGINT/SIGTERM (safer to stop long runs).
+
 ## 0.1.8
 
 - Web dashboard (Next.js): full workflow UI (Dashboard, models, adapters, training, eval, chat, serving).

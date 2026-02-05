@@ -22,14 +22,22 @@ tasks:
   - id: add
     prompt: |
       Write a Python function `add(a, b)` that returns the sum.
+
+      Return only Python code.
     k: 2
     max_new_tokens: 128
-    verifier: verifiers/regex.py
-    verifier_kwargs:
-      pattern: "def\\s+add\\("
+    tests: |
+      from main import add
+
+      def test_add():
+          assert add(1, 2) == 3
+          assert add(-1, 5) == 4
 ```
 
-Each task defines a prompt, a verifier, and the number of attempts (`k`) for pass@k scoring.
+Each task defines a prompt, a pass@k attempt count (`k`), and either:
+
+- `tests` — embedded pytest tests (recommended)
+- `verifier` — a custom verifier module (see `docs/VERIFIERS.md`)
 
 ### Options
 

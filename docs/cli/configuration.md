@@ -158,6 +158,7 @@ mlxsmith config env
 | `temperature` | `0.7` | Sampling temperature |
 | `top_p` | `1.0` | Top-p sampling |
 | `top_k` | None | Top-k sampling |
+| `strip_think` | `false` | Strip Qwen-style `<think>...</think>` blocks and chat template markers (e.g. `<|im_end|>`) from outputs |
 
 ### serve
 

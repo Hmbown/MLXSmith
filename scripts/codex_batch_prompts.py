@@ -16,11 +16,11 @@ from typing import Iterable, Optional
 DEFAULT_CMD = os.getenv("MLXSMITH_CLI_CODEX_CMD") or (
     "codex exec --full-auto --disable shell_tool --disable shell_snapshot "
     "-c 'features.collab=false' "
+    "-c 'model_reasoning_effort=\"medium\"' "
+    "-c 'model_reasoning_summaries=\"never\"' "
     "-c 'mcp_servers.github.enabled=false' "
     "-c 'mcp_servers.aleph.enabled=false' "
     "-c 'mcp_servers.hegelion.enabled=false' "
-    "-c 'mcp_servers.gxmcp.enabled=false' "
-    "-c 'mcp_servers.acz.enabled=false' "
     "-c 'hooks.agent-turn-complete=[]' "
     "--model gpt-5.2"
 )

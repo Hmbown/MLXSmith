@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
 
 from . import __version__
 from .config import ProjectConfig
@@ -373,6 +373,16 @@ def create_app(model_spec: str, cfg: ProjectConfig) -> FastAPI:
         cfg=cfg,
     )
     app.include_router(router)
+
+    @app.get("/eval/last/results.json", include_in_schema=False)
+    def eval_last_results() -> FileResponse:
+        results_path = (Path.cwd() / "eval" / "last" / "results.json").resolve()
+        if not results_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="Eval results not found. Run `mlxsmith eval --suite <suite> --model <model>` first.",
+            )
+        return FileResponse(str(results_path))
     
     # Add UI routes if enabled
     if cfg.serve.ui:

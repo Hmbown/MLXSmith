@@ -38,6 +38,23 @@ curl http://localhost:8080/v1/chat/completions \
   }'
 ```
 
+## Qwen formatting cleanup
+
+Some Qwen chat models can emit `<think>...</think>` blocks or special markers like `<|im_end|>` in the raw text output.
+
+Enable output sanitization via config:
+
+```yaml
+infer:
+  strip_think: true
+```
+
+Or via environment variable:
+
+```bash
+export MLXSMITH__INFER__STRIP_THINK=1
+```
+
 ## Options
 
 | Option | Default | Description |

@@ -19,6 +19,15 @@ If `mlxsmith pull` fails during conversion:
 - Retry with `--trust-remote-code` for models that require custom code.
 - Check disk space under `cache/`.
 
+## Qwen `<think>` or `<|im_end|>` in outputs
+
+Some Qwen chat models can emit reasoning blocks (`<think>...</think>`) or special markers like `<|im_end|>`.
+
+Enable sanitization:
+
+- Config: set `infer.strip_think: true`
+- Env var: `export MLXSMITH__INFER__STRIP_THINK=1`
+
 ## Out of memory (unified memory pressure)
 
 - Reduce `train.batch_size` and increase `train.grad_accum`.
